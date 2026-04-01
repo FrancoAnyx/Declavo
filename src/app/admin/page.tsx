@@ -315,7 +315,7 @@ function InvitacionesSection() {
 
   useEffect(() => {
     load()
-    (supabase.from('organizations') as any).select('id,name').eq('is_active', true).then(...)
+    (supabase.from('organizations') as any).select('id,name').eq('is_active', true).then(({ data }) => setOrgs(data ?? []))
   }, [load])
 
   async function handleCreate() {
