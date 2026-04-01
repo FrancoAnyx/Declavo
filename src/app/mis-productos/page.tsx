@@ -49,10 +49,10 @@ export default function MisProductosPage() {
   const [selected, setSelected]   = useState<Set<string>>(new Set())
  
   // Import state
-  const [importRows, setImportRows]     = useState<ImportRow[]>([])
-  const [importErrors, setImportErrors] = useState<string[]>([])
-  const [importing, setImporting]       = useState(false)
-  const [importDone, setImportDone]     = useState(false)
+  const [importRows, setImportRows]       = useState<ImportRow[]>([])
+  const [importErrors, setImportErrors]   = useState<string[]>([])
+  const [importing, setImporting]         = useState(false)
+  const [importDone, setImportDone]       = useState(false)
   const [importLoading, setImportLoading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
  
@@ -70,7 +70,7 @@ export default function MisProductosPage() {
  
   useEffect(() => { if (!profileLoading) fetchProducts() }, [fetchProducts, profileLoading])
  
-  function openAdd()         { setForm(EMPTY_FORM); setEditId(null); setFormError(''); setShowModal(true) }
+  function openAdd() { setForm(EMPTY_FORM); setEditId(null); setFormError(''); setShowModal(true) }
   function openEdit(p: Product) {
     setForm({
       sku: p.sku, description: p.description, brand: p.brand,
@@ -87,7 +87,6 @@ export default function MisProductosPage() {
     setFormError('')
     if (!form.sku || !form.description || !form.brand) { setFormError('SKU, descripción y marca son obligatorios.'); return }
     setSaving(true)
- 
     const payload = {
       organization_id: orgId,
       sku: form.sku.trim(),
@@ -102,11 +101,9 @@ export default function MisProductosPage() {
         contact_whatsapp: form.contact_whatsapp,
       },
     }
- 
     const { error } = editId
       ? await supabase.from('products').update(payload).eq('id', editId)
       : await supabase.from('products').insert(payload)
- 
     setSaving(false)
     if (error) { setFormError(error.message); return }
     setShowModal(false)
@@ -135,14 +132,14 @@ export default function MisProductosPage() {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
  
-  // ── Normaliza un header quitando tildes, espacios y mayúsculas ────────────
+  // ── Normaliza un header quitando tildes, espacios y mayúsculas ─────────
   function normalizeHeader(h: string) {
     return String(h ?? '').trim().toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9_]/g, '')
   }
  
-  // ── Parsea una matriz 2D de strings (viene de CSV o de SheetJS) ───────────
+  // ── Parsea una matriz 2D de strings ────────────────────────────────────
   function parseMatrix(rawRows: (string | number | null | undefined)[][]): void {
     if (rawRows.length < 2) {
       setImportErrors(['El archivo está vacío o no tiene datos.'])
@@ -150,7 +147,6 @@ export default function MisProductosPage() {
     }
  
     const headers = rawRows[0].map(h => normalizeHeader(String(h ?? '')))
- 
     const idx = (...candidates: string[]) =>
       candidates.reduce<number>((found, c) => found >= 0 ? found : headers.findIndex(h => h.includes(c)), -1)
  
@@ -181,7 +177,7 @@ export default function MisProductosPage() {
       const desc  = String(cols[descIdx] ?? '').trim()
       const brand = String(cols[brandIdx] ?? '').trim()
  
-      // Skip completely empty rows silently
+      // Filas completamente vacías → ignorar silenciosamente
       if (!sku && !desc && !brand) return
  
       if (!sku || !desc || !brand) {
@@ -213,47 +209,40 @@ export default function MisProductosPage() {
     setImportErrors(errs)
   }
  
-  // ── Manejo del archivo: xlsx o csv ────────────────────────────────────────
+  // ── Manejo del archivo ─────────────────────────────────────────────────
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
  
-    setImportRows([])
-    setImportErrors([])
-    setImportLoading(true)
+    setImportRows([]); setImportErrors([]); setImportLoading(true)
  
     const name = file.name.toLowerCase()
     const isXlsx = name.endsWith('.xlsx') || name.endsWith('.xls')
  
     try {
       if (isXlsx) {
-        // Cargamos SheetJS dinámicamente para no engordar el bundle
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const XLSX: any = await import('https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs' as string)
+        // Carga SheetJS de forma dinámica para no incluirlo en el bundle inicial
+        const XLSX = await import('xlsx')
         const buffer = await file.arrayBuffer()
         const wb = XLSX.read(buffer, { type: 'array' })
  
-        // Busca hoja "Productos", si no existe usa la primera
-        const sheetName: string =
-          wb.SheetNames.find((n: string) => n.toLowerCase().includes('producto')) ??
+        // Busca la hoja "Productos"; si no existe, usa la primera
+        const sheetName =
+          wb.SheetNames.find(n => n.toLowerCase().includes('producto')) ??
           wb.SheetNames[0]
  
         const ws = wb.Sheets[sheetName]
- 
-        // sheet_to_json con header:1 devuelve array de arrays
-        const raw: (string | number | null)[][] = XLSX.utils.sheet_to_json(ws, {
+        const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, {
           header: 1,
           defval: '',
           blankrows: false,
         })
- 
         parseMatrix(raw)
       } else {
         // CSV / TXT
         const text = await file.text()
         const lines = text.split('\n').filter(l => l.trim())
         const matrix = lines.map(line => {
-          // Manejo básico de campos entre comillas
           const result: string[] = []
           let cur = '', inQuote = false
           for (const ch of line) {
@@ -292,8 +281,7 @@ export default function MisProductosPage() {
       },
     }))
     await supabase.from('products').upsert(payload, { onConflict: 'organization_id,sku' })
-    setImporting(false)
-    setImportDone(true)
+    setImporting(false); setImportDone(true)
     setTimeout(() => {
       setShowImport(false)
       setImportRows([]); setImportErrors([]); setImportDone(false)
@@ -522,10 +510,8 @@ export default function MisProductosPage() {
               <h2 className="text-base font-medium">Importar productos</h2>
               <button onClick={() => setShowImport(false)} className="icon-btn"><X size={14} /></button>
             </div>
- 
             <div className="p-5 flex flex-col gap-4">
  
-              {/* ── Estado: completado ── */}
               {importDone && (
                 <div className="text-center py-6">
                   <Check size={36} className="mx-auto mb-3 text-green-600" />
@@ -534,14 +520,12 @@ export default function MisProductosPage() {
                 </div>
               )}
  
-              {/* ── Estado: esperando archivo ── */}
               {!importDone && importRows.length === 0 && (
                 <>
                   <p className="text-sm text-brand-500">
                     Subí la planilla en formato <strong>.xlsx</strong> (Excel) o <strong>.csv</strong>.
                     Usá la plantilla oficial de Declavo para evitar errores.
                   </p>
- 
                   <div
                     onClick={() => !importLoading && fileRef.current?.click()}
                     className={clsx(
@@ -560,7 +544,6 @@ export default function MisProductosPage() {
                     </p>
                     <p className="text-xs text-brand-400 mt-1">.xlsx · .xls · .csv · máx 10 MB</p>
                   </div>
- 
                   <input
                     ref={fileRef}
                     type="file"
@@ -568,7 +551,6 @@ export default function MisProductosPage() {
                     className="hidden"
                     onChange={handleFileChange}
                   />
- 
                   {importErrors.length > 0 && (
                     <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 space-y-1">
                       {importErrors.map((e, i) => <p key={i}>{e}</p>)}
@@ -577,14 +559,12 @@ export default function MisProductosPage() {
                 </>
               )}
  
-              {/* ── Estado: preview ── */}
               {!importDone && importRows.length > 0 && (
                 <>
                   <div className="text-sm bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-green-800 font-medium">
                     ✓ {importRows.length} filas válidas encontradas
                     {importErrors.length > 0 ? ` · ${importErrors.length} con advertencias` : ''}
                   </div>
- 
                   <div className="overflow-x-auto rounded-lg border border-brand-200">
                     <table className="w-full text-xs">
                       <thead>
@@ -614,21 +594,14 @@ export default function MisProductosPage() {
                       </tbody>
                     </table>
                   </div>
- 
                   {importErrors.length > 0 && (
                     <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
                       {importErrors.slice(0, 4).map((e, i) => <p key={i}>{e}</p>)}
                       {importErrors.length > 4 && <p>…y {importErrors.length - 4} advertencias más</p>}
                     </div>
                   )}
- 
                   <div className="flex justify-end gap-2 pt-2 border-t border-brand-200">
-                    <button
-                      onClick={() => { setImportRows([]); setImportErrors([]) }}
-                      className="btn"
-                    >
-                      Atrás
-                    </button>
+                    <button onClick={() => { setImportRows([]); setImportErrors([]) }} className="btn">Atrás</button>
                     <button onClick={handleImportConfirm} disabled={importing} className="btn btn-primary">
                       {importing ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                       Confirmar ({importRows.length} productos)
