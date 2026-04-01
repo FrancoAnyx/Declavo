@@ -154,10 +154,10 @@ function EmpresasSection() {
     setError('')
     if (!form.name || !form.contact_email) { setError('Nombre y email son obligatorios.'); return }
     setSaving(true)
-    const { error: e } = await supabase.from('organizations').insert({
-      name: form.name.trim(),
-      legal_names: form.legal_names.split('\n').map(s => s.trim()).filter(Boolean),
-      contact_email: form.contact_email.trim(),
+   const { error: e } = await (supabase.from('organizations') as any).insert({
+   name: form.name.trim(),
+   legal_names: form.legal_names.split('\n').map(s => s.trim()).filter(Boolean),
+   contact_email: form.contact_email.trim(),
       contact_whatsapp: form.contact_whatsapp || null,
       is_active: true,
     })
