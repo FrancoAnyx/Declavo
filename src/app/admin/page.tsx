@@ -143,7 +143,7 @@ function EmpresasSection() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('organizations').select('*').order('created_at', { ascending: false })
+    const { data } = await (supabase.from('organizations') as any).select('*').order('created_at', { ascending: false })
     setOrgs(data ?? [])
     setLoading(false)
   }, [])
@@ -169,7 +169,7 @@ function EmpresasSection() {
   }
 
   async function handleToggle(org: Organization) {
-    await supabase.from('organizations').update({ is_active: !org.is_active }).eq('id', org.id)
+    await (supabase.from('organizations') as any).update({ is_active: !org.is_active }).eq('id', org.id)
     load()
   }
 
@@ -315,7 +315,7 @@ function InvitacionesSection() {
 
   useEffect(() => {
     load()
-    supabase.from('organizations').select('id,name').eq('is_active', true).then(({ data }) => setOrgs(data ?? []))
+    (supabase.from('organizations') as any).select('id,name').eq('is_active', true).then(...)
   }, [load])
 
   async function handleCreate() {
