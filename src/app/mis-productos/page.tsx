@@ -285,7 +285,17 @@ export default function MisProductosPage() {
   function parseMatrix(rawRows: (string | number | null | undefined)[][]): void {
     if (rawRows.length < 2) { setImportErrors(['El archivo está vacío o no tiene datos.']); return }
 
-    const headers = rawRows[0].map(h => normalizeHeader(String(h ?? '')))
+    // Buscar la fila de encabezados: la primera fila que contenga "sku"
+    let headerRowIdx = -1
+    for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
+      const normalized = rawRows[i].map(h => normalizeHeader(String(h ?? '')))
+      if (normalized.some(h => h === 'sku')) { headerRowIdx = i; break }
+    }
+    if (headerRowIdx < 0) {
+      setImportErrors(['No se encontró la fila de encabezados. El archivo debe tener una columna llamada "SKU".']); return
+    }
+
+    const headers = rawRows[headerRowIdx].map(h => normalizeHeader(String(h ?? '')))
     const idx = (...candidates: string[]) =>
       candidates.reduce<number>((f, c) => f >= 0 ? f : headers.findIndex(h => h.includes(c)), -1)
 
@@ -305,12 +315,15 @@ export default function MisProductosPage() {
     const validRows: ImportRow[] = []
     const errs: string[] = []
 
-    rawRows.slice(1).forEach((cols, i) => {
-      const lineNum = i + 2
+    // Saltear encabezados + cualquier fila de subtítulos inmediatamente después
+    rawRows.slice(headerRowIdx + 1).forEach((cols, i) => {
+      const lineNum = headerRowIdx + i + 2
       const sku = String(cols[skuIdx] ?? '').trim()
       const desc = String(cols[descIdx] ?? '').trim()
       const brand = String(cols[brandIdx] ?? '').trim()
       if (!sku && !desc && !brand) return
+      // Omitir filas que son claramente subtítulos de la plantilla
+      if (sku.startsWith('*') || sku.toLowerCase().includes('obligatorio') || sku.toLowerCase().includes('ejemplo') || sku.startsWith('▶')) return
       if (!sku || !desc || !brand) { errs.push(`Fila ${lineNum}: SKU, descripción o marca vacíos — omitida`); return }
 
       const stock = parseInt(String(stockIdx >= 0 ? cols[stockIdx] ?? 0 : 0), 10)
@@ -359,18 +372,34 @@ export default function MisProductosPage() {
   }
 
   async function handleImportConfirm() {
-    if (!orgId || importRows.length === 0) return
+    if (importRows.length === 0) return
+    if (!orgId) {
+      setImportErrors(['Tu usuario no tiene una empresa asignada. Contactá al administrador.'])
+      return
+    }
     setImporting(true)
-    await supabase.from('products').upsert(
-      importRows.map(r => ({
-        organization_id: orgId, sku: r.sku, description: r.description, brand: r.brand,
-        category: r.category ?? null, stock_quantity: r.stock_quantity, price: r.price ?? null,
-        status: 'active' as const,
-        extra_attributes: { contact_email: r.contact_email ?? '', contact_whatsapp: r.contact_whatsapp ?? '' },
-      })),
-      { onConflict: 'organization_id,sku' }
-    )
-    setImporting(false); setImportDone(true)
+    // Upsert en lotes de 100 para evitar límites de payload
+    const BATCH = 100
+    let lastError: string | null = null
+    for (let i = 0; i < importRows.length; i += BATCH) {
+      const batch = importRows.slice(i, i + BATCH)
+      const { error } = await supabase.from('products').upsert(
+        batch.map(r => ({
+          organization_id: orgId, sku: r.sku, description: r.description, brand: r.brand,
+          category: r.category ?? null, stock_quantity: r.stock_quantity, price: r.price ?? null,
+          status: 'active' as const,
+          extra_attributes: { contact_email: r.contact_email ?? '', contact_whatsapp: r.contact_whatsapp ?? '' },
+        })),
+        { onConflict: 'organization_id,sku' }
+      )
+      if (error) { lastError = error.message; break }
+    }
+    setImporting(false)
+    if (lastError) {
+      setImportErrors([`Error al guardar: ${lastError}`])
+      return
+    }
+    setImportDone(true)
     setTimeout(() => { setShowImport(false); setImportRows([]); setImportErrors([]); setImportDone(false); fetchProducts() }, 1500)
   }
 
