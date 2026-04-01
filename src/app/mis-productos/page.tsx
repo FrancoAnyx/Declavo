@@ -5,26 +5,37 @@ import { useProfile } from '@/hooks/useProfile'
 import { Plus, Upload, Search, LayoutGrid, List, Pencil, Trash2, Pause, Play, Loader2, X, Check } from 'lucide-react'
 import type { Product } from '@/types/database'
 import clsx from 'clsx'
-
+ 
 type FormData = {
   sku: string; description: string; brand: string; category: string
   stock_quantity: string; price: string; status: 'active' | 'paused'
   contact_email: string; contact_whatsapp: string
 }
-
+ 
 const EMPTY_FORM: FormData = {
   sku: '', description: '', brand: '', category: '',
   stock_quantity: '0', price: '', status: 'active',
   contact_email: '', contact_whatsapp: '',
 }
-
+ 
 const BRANDS = ['HP', 'Lenovo', 'Samsung', 'Cisco', 'TP-Link', 'Epson', 'Dell', 'Asus', 'Acer', 'Apple', 'Otra']
 const CATS   = ['Notebooks', 'Desktops', 'Monitores', 'Impresoras', 'Networking', 'Tablets', 'Servidores', 'Periféricos', 'Otro']
-
+ 
+type ImportRow = {
+  sku: string
+  description: string
+  brand: string
+  category?: string | null
+  stock_quantity: number
+  price?: number | null
+  contact_whatsapp?: string
+  contact_email?: string
+}
+ 
 export default function MisProductosPage() {
   const supabase        = createClient()
   const { user, loading: profileLoading } = useProfile()
-
+ 
   const [products, setProducts]   = useState<Product[]>([])
   const [loading, setLoading]     = useState(true)
   const [view, setView]           = useState<'list' | 'grid'>('list')
@@ -36,16 +47,17 @@ export default function MisProductosPage() {
   const [saving, setSaving]       = useState(false)
   const [formError, setFormError] = useState('')
   const [selected, setSelected]   = useState<Set<string>>(new Set())
-
+ 
   // Import state
-  const [importRows, setImportRows] = useState<Partial<Product>[]>([])
+  const [importRows, setImportRows]     = useState<ImportRow[]>([])
   const [importErrors, setImportErrors] = useState<string[]>([])
-  const [importing, setImporting] = useState(false)
-  const [importDone, setImportDone] = useState(false)
+  const [importing, setImporting]       = useState(false)
+  const [importDone, setImportDone]     = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-
+ 
   const orgId = user?.profile?.organization_id
-
+ 
   const fetchProducts = useCallback(async () => {
     if (!orgId) return
     setLoading(true)
@@ -55,9 +67,9 @@ export default function MisProductosPage() {
     setProducts(data ?? [])
     setLoading(false)
   }, [orgId, search])
-
+ 
   useEffect(() => { if (!profileLoading) fetchProducts() }, [fetchProducts, profileLoading])
-
+ 
   function openAdd()         { setForm(EMPTY_FORM); setEditId(null); setFormError(''); setShowModal(true) }
   function openEdit(p: Product) {
     setForm({
@@ -69,13 +81,13 @@ export default function MisProductosPage() {
     })
     setEditId(p.id); setFormError(''); setShowModal(true)
   }
-
+ 
   async function handleSave() {
     if (!orgId) return
     setFormError('')
     if (!form.sku || !form.description || !form.brand) { setFormError('SKU, descripción y marca son obligatorios.'); return }
     setSaving(true)
-
+ 
     const payload = {
       organization_id: orgId,
       sku: form.sku.trim(),
@@ -90,90 +102,214 @@ export default function MisProductosPage() {
         contact_whatsapp: form.contact_whatsapp,
       },
     }
-
+ 
     const { error } = editId
       ? await supabase.from('products').update(payload).eq('id', editId)
       : await supabase.from('products').insert(payload)
-
+ 
     setSaving(false)
     if (error) { setFormError(error.message); return }
     setShowModal(false)
     fetchProducts()
   }
-
+ 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar este producto? Esta acción no se puede deshacer.')) return
     await supabase.from('products').delete().eq('id', id)
     fetchProducts()
   }
-
+ 
   async function handleToggleStatus(p: Product) {
     const next = p.status === 'active' ? 'paused' : 'active'
     await supabase.from('products').update({ status: next }).eq('id', p.id)
     fetchProducts()
   }
-
+ 
   async function handleBulkDelete() {
     if (!confirm(`¿Eliminar ${selected.size} productos?`)) return
     await supabase.from('products').delete().in('id', [...selected])
     setSelected(new Set()); fetchProducts()
   }
-
+ 
   function toggleSelect(id: string) {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
-
-  // CSV import
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+ 
+  // ── Normaliza un header quitando tildes, espacios y mayúsculas ────────────
+  function normalizeHeader(h: string) {
+    return String(h ?? '').trim().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9_]/g, '')
+  }
+ 
+  // ── Parsea una matriz 2D de strings (viene de CSV o de SheetJS) ───────────
+  function parseMatrix(rawRows: (string | number | null | undefined)[][]): void {
+    if (rawRows.length < 2) {
+      setImportErrors(['El archivo está vacío o no tiene datos.'])
+      return
+    }
+ 
+    const headers = rawRows[0].map(h => normalizeHeader(String(h ?? '')))
+ 
+    const idx = (...candidates: string[]) =>
+      candidates.reduce<number>((found, c) => found >= 0 ? found : headers.findIndex(h => h.includes(c)), -1)
+ 
+    const skuIdx   = idx('sku')
+    const descIdx  = idx('desc', 'nombre', 'descripcion', 'description')
+    const brandIdx = idx('marca', 'brand')
+    const stockIdx = idx('stock', 'cant', 'cantidad', 'quantity')
+    const priceIdx = idx('precio', 'price')
+    const catIdx   = idx('cat', 'categoria', 'category')
+    const waIdx    = idx('whatsapp', 'contacto_w', 'wa', 'celular')
+    const emailIdx = idx('email', 'contacto_e', 'correo')
+ 
+    if (skuIdx < 0 || descIdx < 0 || brandIdx < 0) {
+      setImportErrors([
+        'No se encontraron las columnas requeridas.',
+        `Columnas detectadas: ${headers.join(', ')}`,
+        'El archivo debe tener: SKU, Descripcion, Marca',
+      ])
+      return
+    }
+ 
+    const validRows: ImportRow[] = []
+    const errs: string[] = []
+ 
+    rawRows.slice(1).forEach((cols, i) => {
+      const lineNum = i + 2
+      const sku   = String(cols[skuIdx] ?? '').trim()
+      const desc  = String(cols[descIdx] ?? '').trim()
+      const brand = String(cols[brandIdx] ?? '').trim()
+ 
+      // Skip completely empty rows silently
+      if (!sku && !desc && !brand) return
+ 
+      if (!sku || !desc || !brand) {
+        errs.push(`Fila ${lineNum}: SKU, descripción o marca vacíos — omitida`)
+        return
+      }
+ 
+      const rawStock = stockIdx >= 0 ? cols[stockIdx] : undefined
+      const stock = rawStock != null && rawStock !== ''
+        ? parseInt(String(rawStock), 10) : 0
+ 
+      const rawPrice = priceIdx >= 0 ? cols[priceIdx] : undefined
+      const priceStr = String(rawPrice ?? '').replace(/\./g, '').replace(',', '.')
+      const price = priceStr !== '' ? parseFloat(priceStr) : null
+ 
+      validRows.push({
+        sku,
+        description: desc,
+        brand,
+        category:         catIdx >= 0 && cols[catIdx] ? String(cols[catIdx]).trim() : null,
+        stock_quantity:   isNaN(stock) ? 0 : Math.max(0, stock),
+        price:            price && !isNaN(price) ? price : null,
+        contact_whatsapp: waIdx >= 0 ? String(cols[waIdx] ?? '').trim() : '',
+        contact_email:    emailIdx >= 0 ? String(cols[emailIdx] ?? '').trim() : '',
+      })
+    })
+ 
+    setImportRows(validRows)
+    setImportErrors(errs)
+  }
+ 
+  // ── Manejo del archivo: xlsx o csv ────────────────────────────────────────
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => {
-      const text = ev.target?.result as string
-      const lines = text.split('\n').filter(l => l.trim())
-      if (lines.length < 2) { setImportErrors(['El archivo está vacío o no tiene datos.']); return }
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z_]/g, ''))
-      const skuIdx  = headers.findIndex(h => h.includes('sku'))
-      const descIdx = headers.findIndex(h => h.includes('desc') || h.includes('nombre'))
-      const brandIdx= headers.findIndex(h => h.includes('marca') || h.includes('brand'))
-      const stockIdx= headers.findIndex(h => h.includes('stock') || h.includes('cant'))
-      if (skuIdx < 0 || descIdx < 0 || brandIdx < 0) {
-        setImportErrors(['Columnas requeridas no encontradas: SKU, Descripción, Marca']); return
+ 
+    setImportRows([])
+    setImportErrors([])
+    setImportLoading(true)
+ 
+    const name = file.name.toLowerCase()
+    const isXlsx = name.endsWith('.xlsx') || name.endsWith('.xls')
+ 
+    try {
+      if (isXlsx) {
+        // Cargamos SheetJS dinámicamente para no engordar el bundle
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const XLSX: any = await import('https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs' as string)
+        const buffer = await file.arrayBuffer()
+        const wb = XLSX.read(buffer, { type: 'array' })
+ 
+        // Busca hoja "Productos", si no existe usa la primera
+        const sheetName: string =
+          wb.SheetNames.find((n: string) => n.toLowerCase().includes('producto')) ??
+          wb.SheetNames[0]
+ 
+        const ws = wb.Sheets[sheetName]
+ 
+        // sheet_to_json con header:1 devuelve array de arrays
+        const raw: (string | number | null)[][] = XLSX.utils.sheet_to_json(ws, {
+          header: 1,
+          defval: '',
+          blankrows: false,
+        })
+ 
+        parseMatrix(raw)
+      } else {
+        // CSV / TXT
+        const text = await file.text()
+        const lines = text.split('\n').filter(l => l.trim())
+        const matrix = lines.map(line => {
+          // Manejo básico de campos entre comillas
+          const result: string[] = []
+          let cur = '', inQuote = false
+          for (const ch of line) {
+            if (ch === '"') { inQuote = !inQuote }
+            else if (ch === ',' && !inQuote) { result.push(cur.trim()); cur = '' }
+            else { cur += ch }
+          }
+          result.push(cur.trim())
+          return result
+        })
+        parseMatrix(matrix)
       }
-      const rows: Partial<Product>[] = []
-      const errors: string[] = []
-      lines.slice(1).forEach((line, i) => {
-        const cols = line.split(',')
-        const sku  = cols[skuIdx]?.trim()
-        const desc = cols[descIdx]?.trim()
-        const brand= cols[brandIdx]?.trim()
-        if (!sku || !desc || !brand) { errors.push(`Fila ${i + 2}: SKU, descripción o marca vacíos`); return }
-        rows.push({ sku, description: desc, brand, stock_quantity: stockIdx >= 0 ? Number(cols[stockIdx]) || 0 : 0 })
-      })
-      setImportRows(rows); setImportErrors(errors)
+    } catch (err) {
+      setImportErrors([`Error al leer el archivo: ${err instanceof Error ? err.message : 'formato no reconocido'}`])
+    } finally {
+      setImportLoading(false)
+      e.target.value = ''
     }
-    reader.readAsText(file)
   }
-
+ 
   async function handleImportConfirm() {
     if (!orgId || importRows.length === 0) return
     setImporting(true)
-    const payload = importRows.map(r => ({ ...r, organization_id: orgId, status: 'active' as const, extra_attributes: {} }))
-    // Upsert by org+sku
+    const payload = importRows.map(r => ({
+      organization_id: orgId,
+      sku: r.sku,
+      description: r.description,
+      brand: r.brand,
+      category: r.category ?? null,
+      stock_quantity: r.stock_quantity,
+      price: r.price ?? null,
+      status: 'active' as const,
+      extra_attributes: {
+        contact_email: r.contact_email ?? '',
+        contact_whatsapp: r.contact_whatsapp ?? '',
+      },
+    }))
     await supabase.from('products').upsert(payload, { onConflict: 'organization_id,sku' })
-    setImporting(false); setImportDone(true)
-    setTimeout(() => { setShowImport(false); setImportRows([]); setImportErrors([]); setImportDone(false); fetchProducts() }, 1500)
+    setImporting(false)
+    setImportDone(true)
+    setTimeout(() => {
+      setShowImport(false)
+      setImportRows([]); setImportErrors([]); setImportDone(false)
+      fetchProducts()
+    }, 1500)
   }
-
+ 
   const stats = {
     total: products.length,
     active: products.filter(p => p.status === 'active').length,
     paused: products.filter(p => p.status === 'paused').length,
     units: products.reduce((s, p) => s + Number(p.stock_quantity), 0),
   }
-
+ 
   if (profileLoading) return <div className="flex items-center justify-center h-64"><Loader2 size={20} className="animate-spin text-brand-400" /></div>
-
+ 
   return (
     <div className="p-6 max-w-6xl mx-auto flex flex-col gap-5">
       {/* Header */}
@@ -191,7 +327,7 @@ export default function MisProductosPage() {
           </button>
         </div>
       </div>
-
+ 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-2.5">
         {[
@@ -206,7 +342,7 @@ export default function MisProductosPage() {
           </div>
         ))}
       </div>
-
+ 
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1">
@@ -230,7 +366,7 @@ export default function MisProductosPage() {
           ))}
         </div>
       </div>
-
+ 
       {/* Products */}
       {loading ? (
         <div className="flex items-center justify-center h-40"><Loader2 size={20} className="animate-spin text-brand-400" /></div>
@@ -305,8 +441,8 @@ export default function MisProductosPage() {
           ))}
         </div>
       )}
-
-      {/* Add/Edit Modal */}
+ 
+      {/* ── Add/Edit Modal ── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl border border-brand-200 w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -377,67 +513,122 @@ export default function MisProductosPage() {
           </div>
         </div>
       )}
-
-      {/* Import Modal */}
+ 
+      {/* ── Import Modal ── */}
       {showImport && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl border border-brand-200 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-5 border-b border-brand-200">
-              <h2 className="text-base font-medium">Importar desde planilla</h2>
+              <h2 className="text-base font-medium">Importar productos</h2>
               <button onClick={() => setShowImport(false)} className="icon-btn"><X size={14} /></button>
             </div>
+ 
             <div className="p-5 flex flex-col gap-4">
-              {importDone ? (
+ 
+              {/* ── Estado: completado ── */}
+              {importDone && (
                 <div className="text-center py-6">
                   <Check size={36} className="mx-auto mb-3 text-green-600" />
                   <p className="font-medium">¡Importación completada!</p>
                   <p className="text-sm text-brand-400 mt-1">{importRows.length} productos procesados.</p>
                 </div>
-              ) : importRows.length === 0 ? (
+              )}
+ 
+              {/* ── Estado: esperando archivo ── */}
+              {!importDone && importRows.length === 0 && (
                 <>
-                  <div>
-                    <p className="text-sm text-brand-500 mb-3">
-                      El archivo debe tener columnas: <strong>SKU</strong>, <strong>Descripción</strong> (o Nombre), <strong>Marca</strong>, <strong>Stock</strong> (opcional).
+                  <p className="text-sm text-brand-500">
+                    Subí la planilla en formato <strong>.xlsx</strong> (Excel) o <strong>.csv</strong>.
+                    Usá la plantilla oficial de Declavo para evitar errores.
+                  </p>
+ 
+                  <div
+                    onClick={() => !importLoading && fileRef.current?.click()}
+                    className={clsx(
+                      'border-2 border-dashed rounded-xl p-8 text-center transition-colors',
+                      importLoading
+                        ? 'border-brand-200 bg-brand-50 cursor-wait'
+                        : 'border-brand-200 cursor-pointer hover:border-brand-400 hover:bg-brand-50'
+                    )}
+                  >
+                    {importLoading
+                      ? <Loader2 size={24} className="mx-auto mb-2 text-brand-400 animate-spin" />
+                      : <Upload size={24} className="mx-auto mb-2 text-brand-300" />
+                    }
+                    <p className="text-sm font-medium text-brand-900">
+                      {importLoading ? 'Leyendo archivo…' : 'Arrastrá o hacé clic para subir'}
                     </p>
-                    <div
-                      onClick={() => fileRef.current?.click()}
-                      className="border-2 border-dashed border-brand-200 rounded-xl p-8 text-center cursor-pointer hover:border-brand-400 hover:bg-brand-50 transition-colors"
-                    >
-                      <Upload size={24} className="mx-auto mb-2 text-brand-300" />
-                      <p className="text-sm font-medium text-brand-900">Arrastrar o hacer clic para subir</p>
-                      <p className="text-xs text-brand-400 mt-1">.csv · .txt · máx 5 MB</p>
-                    </div>
-                    <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFileChange} />
+                    <p className="text-xs text-brand-400 mt-1">.xlsx · .xls · .csv · máx 10 MB</p>
                   </div>
+ 
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv,.txt"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+ 
                   {importErrors.length > 0 && (
-                    <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 space-y-1">
                       {importErrors.map((e, i) => <p key={i}>{e}</p>)}
                     </div>
                   )}
                 </>
-              ) : (
+              )}
+ 
+              {/* ── Estado: preview ── */}
+              {!importDone && importRows.length > 0 && (
                 <>
                   <div className="text-sm bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-green-800 font-medium">
-                    ✓ {importRows.length} filas válidas encontradas{importErrors.length > 0 ? ` · ${importErrors.length} con advertencias` : ''}
+                    ✓ {importRows.length} filas válidas encontradas
+                    {importErrors.length > 0 ? ` · ${importErrors.length} con advertencias` : ''}
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border border-brand-200 rounded-lg overflow-hidden">
-                      <thead><tr className="bg-brand-50"><th className="table-th text-[10px]">SKU</th><th className="table-th text-[10px]">Descripción</th><th className="table-th text-[10px]">Marca</th><th className="table-th text-[10px]">Stock</th></tr></thead>
+ 
+                  <div className="overflow-x-auto rounded-lg border border-brand-200">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-brand-50">
+                          <th className="table-th text-[10px]">SKU</th>
+                          <th className="table-th text-[10px]">Descripción</th>
+                          <th className="table-th text-[10px]">Marca</th>
+                          <th className="table-th text-[10px]">Stock</th>
+                        </tr>
+                      </thead>
                       <tbody>
-                        {importRows.slice(0, 5).map((r, i) => (
-                          <tr key={i} className="table-tr"><td className="table-td font-mono">{r.sku}</td><td className="table-td truncate max-w-[140px]">{r.description}</td><td className="table-td">{r.brand}</td><td className="table-td">{r.stock_quantity}</td></tr>
+                        {importRows.slice(0, 6).map((r, i) => (
+                          <tr key={i} className="table-tr">
+                            <td className="table-td font-mono">{r.sku}</td>
+                            <td className="table-td truncate max-w-[140px]">{r.description}</td>
+                            <td className="table-td">{r.brand}</td>
+                            <td className="table-td text-center">{r.stock_quantity}</td>
+                          </tr>
                         ))}
-                        {importRows.length > 5 && <tr><td colSpan={4} className="table-td text-center text-brand-400">…y {importRows.length - 5} más</td></tr>}
+                        {importRows.length > 6 && (
+                          <tr>
+                            <td colSpan={4} className="table-td text-center text-brand-400">
+                              …y {importRows.length - 6} más
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
+ 
                   {importErrors.length > 0 && (
-                    <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                      {importErrors.slice(0, 3).map((e, i) => <p key={i}>{e}</p>)}
+                    <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
+                      {importErrors.slice(0, 4).map((e, i) => <p key={i}>{e}</p>)}
+                      {importErrors.length > 4 && <p>…y {importErrors.length - 4} advertencias más</p>}
                     </div>
                   )}
+ 
                   <div className="flex justify-end gap-2 pt-2 border-t border-brand-200">
-                    <button onClick={() => { setImportRows([]); setImportErrors([]) }} className="btn">Atrás</button>
+                    <button
+                      onClick={() => { setImportRows([]); setImportErrors([]) }}
+                      className="btn"
+                    >
+                      Atrás
+                    </button>
                     <button onClick={handleImportConfirm} disabled={importing} className="btn btn-primary">
                       {importing ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                       Confirmar ({importRows.length} productos)
@@ -445,6 +636,7 @@ export default function MisProductosPage() {
                   </div>
                 </>
               )}
+ 
             </div>
           </div>
         </div>
