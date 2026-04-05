@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Search, LayoutGrid, List, Mail, MessageCircle, SlidersHorizontal } from 'lucide-react'
+import { Search, LayoutGrid, List, Mail, MessageCircle, SlidersHorizontal, Lock } from 'lucide-react'
 import type { CatalogProduct } from '@/types/database'
 import clsx from 'clsx'
 
@@ -23,6 +23,22 @@ export default function CatalogoPage() {
   const [orgs, setOrgs]               = useState<string[]>([])
   const [brands, setBrands]           = useState<string[]>([])
   const [cats, setCats]               = useState<string[]>([])
+
+  // Estado de sesión del visitante
+  const [isLoggedIn, setIsLoggedIn]   = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
+
+  // Verificar si hay sesión activa (sin redirigir si no la hay)
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsLoggedIn(!!user)
+      setAuthChecked(true)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session?.user)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   const fetchProducts = useCallback(async () => {
     setLoading(true)
@@ -65,15 +81,22 @@ export default function CatalogoPage() {
   useEffect(() => { fetchProducts() }, [fetchProducts])
 
   function handleContact(p: CatalogProduct, channel: 'whatsapp' | 'email') {
+    if (!isLoggedIn) return
+
     if (channel === 'whatsapp' && p.contact_whatsapp) {
       const num = p.contact_whatsapp.replace(/\D/g, '')
-      const msg = encodeURIComponent(`Hola! Te consulto por el producto SKU: ${p.sku} — ${p.description}`)
+      const msg = encodeURIComponent(
+        `Hola! Te contacto desde Declavo por el siguiente producto:\n\n` +
+        `• SKU: ${p.sku}\n` +
+        `• Descripción: ${p.description}\n` +
+        `• Marca: ${p.brand}\n\n` +
+        `¿Podés darme más información?`
+      )
       window.open(`https://wa.me/${num}?text=${msg}`, '_blank')
     } else if (channel === 'email' && p.contact_email) {
-      window.open(
-        `mailto:${p.contact_email}?subject=Consulta por ${p.sku}&body=Hola%2C%20me%20interesa%20el%20producto%20${encodeURIComponent(p.description)}`,
-        '_blank'
-      )
+      const subject = encodeURIComponent(`Consulta de producto — ${p.sku} | Declavo`)
+      const body = encodeURIComponent(buildEmailBody(p))
+      window.open(`mailto:${p.contact_email}?subject=${subject}&body=${body}`, '_blank')
     }
   }
 
@@ -81,7 +104,7 @@ export default function CatalogoPage() {
 
   return (
     <div className="flex min-h-full">
-      {/* Sidebar */}
+      {/* Sidebar filtros */}
       <aside className="w-52 flex-shrink-0 bg-white border-r border-brand-200 p-4 flex flex-col gap-5">
         <div>
           <p className="text-[10px] font-medium text-brand-400 uppercase tracking-wide mb-2">Empresa</p>
@@ -156,6 +179,20 @@ export default function CatalogoPage() {
             ))}
           </div>
         </div>
+
+        {/* Aviso de sesión para visitantes */}
+        {authChecked && !isLoggedIn && (
+          <>
+            <div className="h-px bg-brand-200" />
+            <div className="bg-brand-50 border border-brand-200 rounded-lg p-3 text-center">
+              <Lock size={14} className="mx-auto mb-1.5 text-brand-400" />
+              <p className="text-[11px] text-brand-500 leading-snug">
+                <a href="/login" className="font-medium text-brand-900 underline underline-offset-2">Iniciá sesión</a>
+                {' '}para contactar vendedores
+              </p>
+            </div>
+          </>
+        )}
       </aside>
 
       {/* Main */}
@@ -201,7 +238,7 @@ export default function CatalogoPage() {
         ) : view === 'grid' ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
             {products.map(p => (
-              <ProductCard key={p.id} product={p} onContact={handleContact} />
+              <ProductCard key={p.id} product={p} onContact={handleContact} isLoggedIn={isLoggedIn} />
             ))}
           </div>
         ) : (
@@ -232,18 +269,27 @@ export default function CatalogoPage() {
                       </span>
                     </td>
                     <td className="table-td">
-                      <div className="flex justify-end gap-1.5">
-                        {p.contact_whatsapp && (
-                          <button onClick={() => handleContact(p, 'whatsapp')} className="icon-btn" title="WhatsApp">
-                            <MessageCircle size={13} />
-                          </button>
-                        )}
-                        {p.contact_email && (
-                          <button onClick={() => handleContact(p, 'email')} className="icon-btn" title="Email">
-                            <Mail size={13} />
-                          </button>
-                        )}
-                      </div>
+                      {isLoggedIn ? (
+                        <div className="flex justify-end gap-1.5">
+                          {p.contact_whatsapp && (
+                            <button onClick={() => handleContact(p, 'whatsapp')} className="icon-btn" title="Consultar por WhatsApp">
+                              <MessageCircle size={13} />
+                            </button>
+                          )}
+                          {p.contact_email && (
+                            <button onClick={() => handleContact(p, 'email')} className="icon-btn" title="Consultar por Email">
+                              <Mail size={13} />
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex justify-end">
+                          <a href="/login" className="flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-900 transition-colors" title="Iniciá sesión para consultar">
+                            <Lock size={11} />
+                            <span>Ingresar</span>
+                          </a>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -272,7 +318,51 @@ export default function CatalogoPage() {
   )
 }
 
-function ProductCard({ product: p, onContact }: { product: CatalogProduct; onContact: (p: CatalogProduct, ch: 'whatsapp' | 'email') => void }) {
+/* ──────────────────────────────────────────── */
+/* Construye el cuerpo del email profesional    */
+/* ──────────────────────────────────────────── */
+function buildEmailBody(p: CatalogProduct): string {
+  const today = new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })
+  return `Buenos días,
+
+Me comunico con ustedes a través de Declavo en relación al siguiente producto publicado en la plataforma:
+
+──────────────────────────────────────
+DETALLE DEL PRODUCTO
+──────────────────────────────────────
+SKU:          ${p.sku}
+Descripción:  ${p.description}
+Marca:        ${p.brand}${p.category ? `\nCategoría:    ${p.category}` : ''}
+Stock actual: ${p.stock_quantity} unidades
+──────────────────────────────────────
+
+Quisiera obtener más información sobre disponibilidad, condiciones comerciales y plazos de entrega.
+
+Quedo a disposición para coordinar según su conveniencia.
+
+Saludos cordiales,
+
+─────────────────────────
+Enviado desde Declavo
+Plataforma de visibilidad de stock entre colegas del rubro tecnológico
+${today}
+─────────────────────────`
+}
+
+/* ──────────────────────────────────────────── */
+/* ProductCard                                  */
+/* ──────────────────────────────────────────── */
+function ProductCard({
+  product: p,
+  onContact,
+  isLoggedIn,
+}: {
+  product: CatalogProduct
+  onContact: (p: CatalogProduct, ch: 'whatsapp' | 'email') => void
+  isLoggedIn: boolean
+}) {
+  const hasContact = p.contact_whatsapp || p.contact_email
+
   return (
     <div className="card overflow-hidden hover:border-brand-300 transition-colors">
       {/* Image placeholder */}
@@ -293,18 +383,34 @@ function ProductCard({ product: p, onContact }: { product: CatalogProduct; onCon
           <span className="text-xs text-brand-400">
             Stock: <span className={clsx('font-medium', p.stock_quantity <= 5 ? 'text-amber-700' : 'text-brand-900')}>{p.stock_quantity} u.</span>
           </span>
-          <div className="flex gap-1.5">
-            {p.contact_whatsapp && (
-              <button onClick={() => onContact(p, 'whatsapp')} className="icon-btn" title="WhatsApp">
-                <MessageCircle size={13} />
-              </button>
-            )}
-            {p.contact_email && (
-              <button onClick={() => onContact(p, 'email')} className="icon-btn" title="Email">
-                <Mail size={13} />
-              </button>
-            )}
-          </div>
+
+          {isLoggedIn ? (
+            /* Usuario logueado: muestra botones de contacto */
+            <div className="flex gap-1.5">
+              {p.contact_whatsapp && (
+                <button onClick={() => onContact(p, 'whatsapp')} className="icon-btn" title="Consultar por WhatsApp">
+                  <MessageCircle size={13} />
+                </button>
+              )}
+              {p.contact_email && (
+                <button onClick={() => onContact(p, 'email')} className="icon-btn" title="Consultar por Email">
+                  <Mail size={13} />
+                </button>
+              )}
+            </div>
+          ) : (
+            /* Visitante sin sesión: invitación a ingresar */
+            hasContact && (
+              <a
+                href="/login"
+                className="flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-900 transition-colors"
+                title="Iniciá sesión para consultar"
+              >
+                <Lock size={11} />
+                <span>Consultar</span>
+              </a>
+            )
+          )}
         </div>
       </div>
     </div>
