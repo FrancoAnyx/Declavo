@@ -27,7 +27,8 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Rutas públicas que no requieren auth
-  const publicPaths = ['/login', '/invite']
+  // /catalogo es ahora público — cualquiera puede ver los productos
+  const publicPaths = ['/login', '/invite', '/catalogo']
   const isPublic = publicPaths.some(p => pathname.startsWith(p))
 
   if (!user && !isPublic) {
