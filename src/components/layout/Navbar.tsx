@@ -3,29 +3,34 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useProfile } from '@/hooks/useProfile'
 import { createClient } from '@/lib/supabase/client'
-import { LogOut, LayoutGrid } from 'lucide-react'
+import { LogOut, LayoutGrid, LogIn } from 'lucide-react'
 import clsx from 'clsx'
 
 const links = [
-  { href: '/catalogo',       label: 'Catálogo' },
-  { href: '/mis-productos',  label: 'Mis productos' },
+  { href: '/catalogo', label: 'Catálogo' },
+]
+
+const authLinks = [
+  { href: '/mis-productos', label: 'Mis productos' },
 ]
 
 export default function Navbar() {
   const pathname = usePathname()
-  const router = useRouter()
+  const router   = useRouter()
   const { user, loading } = useProfile()
   const supabase = createClient()
 
   async function handleLogout() {
     await supabase.auth.signOut()
-    router.push('/login')
+    router.push('/catalogo')
     router.refresh()
   }
 
   const initials = user?.profile?.full_name
     ? user.profile.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
     : user?.email?.slice(0, 2).toUpperCase() ?? '??'
+
+  const isLoggedIn = !loading && !!user
 
   return (
     <nav className="bg-white border-b border-brand-200 px-5 h-14 flex items-center justify-between sticky top-0 z-50">
@@ -38,7 +43,7 @@ export default function Navbar() {
           Declavo
         </Link>
 
-        {/* Nav links */}
+        {/* Nav links — siempre visibles */}
         <div className="flex items-center gap-5">
           {links.map(l => (
             <Link
@@ -49,6 +54,18 @@ export default function Navbar() {
               {l.label}
             </Link>
           ))}
+
+          {/* Links solo para usuarios con sesión */}
+          {isLoggedIn && authLinks.map(l => (
+            <Link
+              key={l.href}
+              href={l.href}
+              className={clsx('nav-link', pathname.startsWith(l.href) && 'nav-link-active')}
+            >
+              {l.label}
+            </Link>
+          ))}
+
           {user?.profile?.role === 'super_admin' && (
             <Link
               href="/admin"
@@ -61,7 +78,8 @@ export default function Navbar() {
       </div>
 
       <div className="flex items-center gap-3">
-        {!loading && user?.organization && (
+        {/* Empresa del usuario logueado */}
+        {isLoggedIn && user?.organization && (
           <div className="flex items-center gap-1.5 bg-brand-100 border border-brand-200 rounded-full px-3 py-1">
             <span className="w-1.5 h-1.5 rounded-full bg-green-600 flex-shrink-0" />
             <span className="text-xs font-medium text-brand-500 max-w-[160px] truncate">
@@ -71,14 +89,26 @@ export default function Navbar() {
         )}
 
         {!loading && (
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center text-xs font-medium text-purple-800">
-              {initials}
+          isLoggedIn ? (
+            /* Usuario con sesión: avatar + logout */
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center text-xs font-medium text-purple-800">
+                {initials}
+              </div>
+              <button onClick={handleLogout} className="icon-btn" title="Cerrar sesión">
+                <LogOut size={13} />
+              </button>
             </div>
-            <button onClick={handleLogout} className="icon-btn" title="Cerrar sesión">
-              <LogOut size={13} />
-            </button>
-          </div>
+          ) : (
+            /* Visitante sin sesión: botón de login */
+            <Link
+              href="/login"
+              className="btn btn-primary"
+            >
+              <LogIn size={13} />
+              Ingresar
+            </Link>
+          )
         )}
       </div>
     </nav>
