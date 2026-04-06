@@ -1,10 +1,6 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
 
-export default async function Home() {
-  // El catálogo es público — redirigir siempre ahí
-  // Si el usuario ya tiene sesión, igual llega al catálogo
-  const supabase = createClient()
-  await supabase.auth.getUser() // refresca la sesión si existe
+// La raíz siempre redirige al catálogo (público para todos)
+export default function Home() {
   redirect('/catalogo')
 }
