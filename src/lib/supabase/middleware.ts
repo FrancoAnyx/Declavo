@@ -1,18 +1,21 @@
 import { createServerClient } from '@supabase/ssr'
 import { type NextRequest, NextResponse } from 'next/server'
-import type { Database } from '@/types/database'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
-  const supabase = createServerClient<Database>(
+  const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return request.cookies.getAll() },
+        getAll() {
+          return request.cookies.getAll()
+        },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          )
           supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -22,22 +25,30 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // IMPORTANTE: no hacer nada entre createServerClient y getUser()
+  // que pueda interferir con las cookies de sesión.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
 
-  // Rutas públicas que no requieren auth
-  // /catalogo es ahora público — cualquiera puede ver los productos
-  const publicPaths = ['/login', '/invite', '/catalogo']
-  const isPublic = publicPaths.some(p => pathname.startsWith(p))
+  // ─── Rutas completamente públicas (sin auth requerida) ───────────────────
+  // /catalogo: cualquier visitante puede ver los productos
+  // /login: formulario de acceso
+  // /invite: registro por invitación
+  const PUBLIC_PATHS = ['/catalogo', '/login', '/invite']
+  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p))
 
+  // Si no hay sesión y la ruta no es pública → redirigir al CATÁLOGO (no al login)
+  // así los visitantes sin sesión siempre aterrizan en el catálogo
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
-    url.pathname = '/login'
+    url.pathname = '/catalogo'
     return NextResponse.redirect(url)
   }
 
-  // Proteger /admin — solo super_admin
+  // ─── Proteger /admin: solo super_admin ──────────────────────────────────
   if (pathname.startsWith('/admin') && user) {
     const { data: profile } = await supabase
       .from('profiles')
