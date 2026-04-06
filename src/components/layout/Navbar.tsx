@@ -1,166 +1,147 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { LogOut, LayoutGrid, LogIn } from 'lucide-react'
-import clsx from 'clsx'
-import type { User } from '@supabase/supabase-js'
+import { usePathname } from 'next/navigation'
+import { useTheme } from '@/components/ThemeProvider'
+import { useProfile } from '@/context/ProfileContext'
 
-type NavProfile = {
-  full_name: string | null
-  role: string | null
-  organization_name: string | null
+// Íconos SVG inline livianos
+function MoonIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  )
 }
+function SunIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/>
+      <line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/>
+      <line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+  )
+}
+
+const NAV_LINKS = [
+  { href: '/catalogo',      label: 'Catálogo' },
+  { href: '/mis-productos', label: 'Mis Productos' },
+]
+
+const ADMIN_LINK = { href: '/admin', label: 'Admin' }
 
 export default function Navbar() {
   const pathname = usePathname()
-  const router = useRouter()
-  const supabase = createClient()
+  const { theme, toggle } = useTheme()
+  const { profile } = useProfile()
 
-  const [user, setUser] = useState<User | null>(null)
-  const [profile, setProfile] = useState<NavProfile | null>(null)
-  const [ready, setReady] = useState(false)
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(href + '/')
 
-  useEffect(() => {
-    async function loadProfile(u: User) {
-      const { data: p } = await supabase
-        .from('profiles')
-        .select('full_name, role, organization_id')
-        .eq('id', u.id)
-        .single()
+  const orgInitials = profile?.organization?.name
+    ? profile.organization.name.slice(0, 2).toUpperCase()
+    : '??'
 
-      if (!p) { setProfile(null); return }
-
-      let org_name: string | null = null
-      if (p.organization_id) {
-        const { data: org } = await supabase
-          .from('organizations')
-          .select('name')
-          .eq('id', p.organization_id)
-          .single()
-        org_name = org?.name ?? null
-      }
-
-      setProfile({
-        full_name: p.full_name,
-        role: p.role,
-        organization_name: org_name,
-      })
-    }
-
-    // Estado inicial
-    supabase.auth.getUser().then(async ({ data: { user: u } }) => {
-      setUser(u)
-      if (u) await loadProfile(u)
-      setReady(true)
-    })
-
-    // Cambios de sesión
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        const u = session?.user ?? null
-        setUser(u)
-        if (u) {
-          await loadProfile(u)
-        } else {
-          setProfile(null)
-        }
-        setReady(true)
-      }
-    )
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    // onAuthStateChange se encarga de limpiar el estado
-    router.push('/catalogo')
-    router.refresh()
-  }
-
-  const initials = profile?.full_name
-    ? profile.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-    : user?.email?.slice(0, 2).toUpperCase() ?? '?'
-
-  const isSuperAdmin = profile?.role === 'super_admin'
+  const links = profile?.role === 'super_admin'
+    ? [...NAV_LINKS, ADMIN_LINK]
+    : NAV_LINKS
 
   return (
-    <nav className="bg-white border-b border-brand-200 px-5 h-14 flex items-center justify-between sticky top-0 z-50">
-      {/* Logo + links */}
-      <div className="flex items-center gap-8">
-        <Link
-          href="/catalogo"
-          className="flex items-center gap-2 text-brand-900 font-medium text-base"
+    <header
+      className="fixed top-0 left-0 right-0 z-50 flex items-center gap-4 px-6"
+      style={{
+        height: 64,
+        backgroundColor: 'var(--bg-surface)',
+        borderBottom: '1px solid var(--border)',
+        backdropFilter: 'blur(12px)',
+        transition: 'background 0.3s, border-color 0.3s',
+      }}
+    >
+      {/* Logo */}
+      <Link href="/catalogo" className="flex items-center gap-2 no-underline">
+        <span
+          style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: 'var(--accent)',
+            boxShadow: '0 0 10px var(--accent)',
+            flexShrink: 0,
+          }}
+        />
+        <span
+          className="font-display font-extrabold text-xl tracking-tight"
+          style={{ color: 'var(--text-primary)', letterSpacing: '-0.5px' }}
         >
-          <div className="w-6 h-6 bg-brand-900 rounded-md flex items-center justify-center">
-            <LayoutGrid size={13} className="text-white" />
-          </div>
           Declavo
-        </Link>
+        </span>
+      </Link>
 
-        <div className="flex items-center gap-5">
+      {/* Nav links */}
+      <nav className="flex items-center gap-1 ml-8">
+        {links.map(link => (
           <Link
-            href="/catalogo"
-            className={clsx('nav-link', pathname.startsWith('/catalogo') && 'nav-link-active')}
+            key={link.href}
+            href={link.href}
+            className="px-3.5 py-1.5 rounded-xl text-sm font-medium transition-all duration-200 no-underline"
+            style={{
+              color: isActive(link.href) ? 'var(--accent)' : 'var(--text-secondary)',
+              background: isActive(link.href) ? 'var(--accent-glow)' : 'transparent',
+            }}
           >
-            Catálogo
+            {link.label}
           </Link>
+        ))}
+      </nav>
 
-          {/* Solo para usuarios con sesión */}
-          {user && (
-            <Link
-              href="/mis-productos"
-              className={clsx('nav-link', pathname.startsWith('/mis-productos') && 'nav-link-active')}
-            >
-              Mis productos
-            </Link>
-          )}
+      {/* Spacer */}
+      <div className="flex-1" />
 
-          {isSuperAdmin && (
-            <Link
-              href="/admin"
-              className={clsx('nav-link', pathname.startsWith('/admin') && 'nav-link-active')}
-            >
-              Admin
-            </Link>
-          )}
-        </div>
-      </div>
+      {/* Theme toggle */}
+      <button
+        onClick={toggle}
+        title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+        className="flex items-center justify-center rounded-xl transition-all duration-200"
+        style={{
+          width: 40, height: 40,
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          color: 'var(--text-secondary)',
+          cursor: 'pointer',
+        }}
+      >
+        {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
+      </button>
 
-      {/* Derecha: sesión */}
-      <div className="flex items-center gap-3">
-        {/* Badge de empresa */}
-        {user && profile?.organization_name && (
-          <div className="flex items-center gap-1.5 bg-brand-100 border border-brand-200 rounded-full px-3 py-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-600 flex-shrink-0" />
-            <span className="text-xs font-medium text-brand-500 max-w-[160px] truncate">
-              {profile.organization_name}
-            </span>
+      {/* Company badge */}
+      {profile && (
+        <div
+          className="flex items-center gap-2 rounded-xl transition-all duration-200"
+          style={{
+            padding: '4px 12px 4px 4px',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          {/* Avatar */}
+          <div
+            className="flex items-center justify-center rounded-xl font-display font-bold text-xs text-white flex-shrink-0"
+            style={{
+              width: 32, height: 32,
+              background: 'linear-gradient(135deg, var(--accent), var(--accent3))',
+            }}
+          >
+            {orgInitials}
           </div>
-        )}
-
-        {/* Mostrar solo cuando auth ya resolvió */}
-        {ready && (
-          user ? (
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center text-xs font-medium text-purple-800">
-                {initials}
-              </div>
-              <button onClick={handleLogout} className="icon-btn" title="Cerrar sesión">
-                <LogOut size={13} />
-              </button>
-            </div>
-          ) : (
-            <Link href="/login" className="btn btn-primary">
-              <LogIn size={13} />
-              Ingresar
-            </Link>
-          )
-        )}
-      </div>
-    </nav>
+          <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+            {profile.organization?.name ?? profile.full_name ?? 'Mi empresa'}
+          </span>
+        </div>
+      )}
+    </header>
   )
 }
