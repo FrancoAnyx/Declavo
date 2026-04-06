@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useProfile } from '@/context/ProfileContext'
 import { useTheme } from '@/components/ThemeProvider'
 import { createClient } from '@/lib/supabase/client'
+import NotificationBell from '@/components/NotificationBell'
 
 function MoonIcon() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> }
 function SunIcon()  { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> }
@@ -21,19 +22,19 @@ export default function Navbar() {
   const organization = user?.organization ?? null
   const role         = profile?.role ?? null
 
-  const isActive  = (href: string) => pathname === href || pathname.startsWith(href + '/')
+  const isActive    = (href: string) => pathname === href || pathname.startsWith(href + '/')
   const displayName = organization?.name ?? profile?.full_name ?? ''
   const initials    = displayName ? displayName.slice(0, 2).toUpperCase() : '?'
 
-  // Navegación según rol:
-  // - Todos los logueados ven Catálogo
-  // - member NO ve Mis Productos (solo lectura en catálogo)
-  // - org_admin y super_admin ven Mis Productos
-  // - super_admin además ve Admin
+  // Links según rol
+  // member: solo Catálogo y Mis Chats (para hacer consultas y ver respuestas)
+  // org_admin: Catálogo, Mis Productos, Mis Chats
+  // super_admin: todo + Admin
   const navLinks = [
-    { href: '/catalogo', label: 'Catálogo', roles: ['super_admin', 'org_admin', 'member', null] },
-    { href: '/mis-productos', label: 'Mis Productos', roles: ['super_admin', 'org_admin'] },
-    { href: '/admin', label: 'Admin', roles: ['super_admin'] },
+    { href: '/catalogo',      label: 'Catálogo',      roles: ['super_admin', 'org_admin', 'member', null] },
+    { href: '/mis-productos', label: 'Mis Productos',  roles: ['super_admin', 'org_admin'] },
+    { href: '/mis-chats',     label: 'Mis Chats',      roles: ['super_admin', 'org_admin', 'member'] },
+    { href: '/admin',         label: 'Admin',          roles: ['super_admin'] },
   ].filter(l => l.roles.includes(role))
 
   async function handleLogout() {
@@ -73,6 +74,9 @@ export default function Navbar() {
 
       <div style={{ flex: 1 }} />
 
+      {/* Campana de notificaciones (solo logueados con empresa) */}
+      {!loading && profile && <NotificationBell />}
+
       {/* Tema */}
       <button onClick={toggle} title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'} style={{
         width: 38, height: 38, borderRadius: 9, marginRight: 10,
@@ -101,7 +105,6 @@ export default function Navbar() {
                   {displayName}
                 </span>
               )}
-              {/* Rol visible */}
               <span style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.2 }}>
                 {role === 'super_admin' ? 'Super Admin' : role === 'org_admin' ? 'Administrador' : 'Miembro'}
               </span>
