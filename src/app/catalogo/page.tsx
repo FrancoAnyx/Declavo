@@ -1,617 +1,322 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import {
-  Search,
-  LayoutGrid,
-  List,
-  Mail,
-  MessageCircle,
-  SlidersHorizontal,
-  Lock,
-  ChevronDown,
-} from 'lucide-react'
-import type { CatalogProduct } from '@/types/database'
-import clsx from 'clsx'
+import { useState, useEffect, useMemo } from 'react'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import Navbar from '@/components/Navbar'
+import CatalogoSidebar from '@/components/CatalogoSidebar'
+import ProductCard, { type CatalogProduct } from '@/components/ProductCard'
+import { useProfile } from '@/context/ProfileContext'
 
-const ITEMS_PER_PAGE = 24
+const SIDEBAR_W = 240
+const PAGE_SIZE = 24
 
-// ─── Sección colapsable del sidebar ──────────────────────────────────────────
-function SidebarSection({
-  title,
-  children,
-  defaultOpen = true,
-}: {
-  title: string
-  children: React.ReactNode
-  defaultOpen?: boolean
-}) {
-  const [open, setOpen] = useState(defaultOpen)
+// Ícono lupa
+function SearchIcon() {
   return (
-    <div>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center justify-between w-full mb-1.5 group"
-      >
-        <p className="text-[10px] font-medium text-brand-400 uppercase tracking-wide group-hover:text-brand-600 transition-colors">
-          {title}
-        </p>
-        <ChevronDown
-          size={12}
-          className={clsx(
-            'text-brand-300 group-hover:text-brand-500 transition-transform duration-200',
-            open ? 'rotate-0' : '-rotate-90'
-          )}
-        />
-      </button>
-      {open && <div className="flex flex-col gap-0.5">{children}</div>}
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+  )
+}
+// Ícono grilla / lista
+function GridIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+}
+function ListIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+}
+
+// Stat card pequeño
+function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+  return (
+    <div className="stat-card transition-all duration-200">
+      <div className="text-xs font-bold tracking-wider uppercase mb-2.5" style={{ color: 'var(--text-muted)' }}>
+        {label}
+      </div>
+      <div className="font-display font-bold text-3xl tracking-tight leading-none" style={{ color: 'var(--text-primary)' }}>
+        {value}
+      </div>
+      {sub && <div className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>{sub}</div>}
     </div>
   )
 }
 
-// ─── Tipos de estado de sesión ────────────────────────────────────────────────
-type AuthState = {
-  ready: boolean       // ¿ya terminó de verificar?
-  loggedIn: boolean    // ¿hay sesión activa?
-  isSuperAdmin: boolean
+// Tabla de lista
+function ProductTable({ products, showOrg }: { products: CatalogProduct[]; showOrg: boolean }) {
+  function AvailBadge({ qty }: { qty: number }) {
+    if (qty > 5) return <span className="badge-success">● Disponible</span>
+    if (qty > 0) return <span className="badge-warning">● Stock bajo</span>
+    return             <span className="badge-danger">● Sin stock</span>
+  }
+
+  const handleWA = (p: CatalogProduct) => {
+    if (!p.contact_whatsapp) return
+    const num = p.contact_whatsapp.replace(/\D/g, '')
+    const msg = encodeURIComponent(`Hola, vi "${p.description}" en Declavo y me interesa.`)
+    window.open(`https://wa.me/${num}?text=${msg}`, '_blank')
+  }
+
+  const handleEmail = (p: CatalogProduct) => {
+    if (!p.contact_email) return
+    window.location.href = `mailto:${p.contact_email}?subject=Consulta Declavo: ${p.sku}`
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Descripción</th>
+            <th>Marca</th>
+            <th>Categoría</th>
+            <th>Stock</th>
+            <th>Estado</th>
+            {showOrg && <th>Empresa</th>}
+            <th>Contacto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {products.map(p => (
+            <tr key={p.id}>
+              <td>
+                <span className="font-display text-xs font-bold tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                  {p.sku}
+                </span>
+              </td>
+              <td style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: 280 }}>
+                <span className="line-clamp-1">{p.description}</span>
+              </td>
+              <td><span className="badge-accent">{p.brand}</span></td>
+              <td>{p.category ?? '—'}</td>
+              <td>{p.stock_quantity}</td>
+              <td><AvailBadge qty={Number(p.stock_quantity)} /></td>
+              {showOrg && <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{p.organization_name ?? '—'}</td>}
+              <td>
+                <div className="flex gap-1.5">
+                  <button className="btn-wa" style={{ flex: 'none', padding: '4px 10px', fontSize: 11 }} onClick={() => handleWA(p)}>WA</button>
+                  <button className="btn-email" style={{ flex: 'none', padding: '4px 10px', fontSize: 11 }} onClick={() => handleEmail(p)}>✉</button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function CatalogoPage() {
-  const supabase = createClient()
+  const supabase = createClientComponentClient()
+  const { profile } = useProfile()
+  const isSuperAdmin = profile?.role === 'super_admin'
 
-  // Auth
-  const [auth, setAuth] = useState<AuthState>({
-    ready: false,
-    loggedIn: false,
-    isSuperAdmin: false,
-  })
+  const [products, setProducts]       = useState<CatalogProduct[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [search, setSearch]           = useState('')
+  const [view, setView]               = useState<'grid' | 'list'>('grid')
+  const [selectedBrand, setSelectedBrand]       = useState<string | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [selectedAvail, setSelectedAvail]       = useState<string | null>(null)
 
-  // Productos
-  const [products, setProducts] = useState<CatalogProduct[]>([])
-  const [loading, setLoading] = useState(true)
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-
-  // UI
-  const [view, setView] = useState<'grid' | 'list'>('grid')
-  const [search, setSearch] = useState('')
-
-  // Filtros
-  const [filterBrand, setFilterBrand] = useState('')
-  const [filterCat, setFilterCat] = useState('')
-  const [filterStock, setFilterStock] = useState('')
-  const [filterOrg, setFilterOrg] = useState('')
-
-  // Opciones de filtros
-  const [brands, setBrands] = useState<string[]>([])
-  const [cats, setCats] = useState<string[]>([])
-  const [orgs, setOrgs] = useState<string[]>([])
-
-  // ── Verificar sesión UNA vez al montar, luego escuchar cambios ──────────────
+  // Cargar productos
   useEffect(() => {
-    async function resolveRole(userId: string): Promise<boolean> {
-      const { data } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', userId)
-        .single()
-      return data?.role === 'super_admin'
+    async function load() {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('catalog_view')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(500)
+
+      if (!error && data) setProducts(data as CatalogProduct[])
+      setLoading(false)
     }
+    load()
+  }, [supabase])
 
-    // Estado inicial
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) {
-        setAuth({ ready: true, loggedIn: false, isSuperAdmin: false })
-      } else {
-        const isSuper = await resolveRole(user.id)
-        setAuth({ ready: true, loggedIn: true, isSuperAdmin: isSuper })
-      }
-    })
-
-    // Cambios de sesión (login / logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (!session?.user) {
-          setAuth({ ready: true, loggedIn: false, isSuperAdmin: false })
-        } else {
-          const isSuper = await resolveRole(session.user.id)
-          setAuth({ ready: true, loggedIn: true, isSuperAdmin: isSuper })
-        }
-      }
-    )
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  // ── Cargar opciones de filtros ────────────────────────────────────────────
+  // Búsqueda full-text via RPC cuando hay texto
   useEffect(() => {
+    if (!search.trim()) return
+    const timeout = setTimeout(async () => {
+      const { data } = await supabase
+        .rpc('search_catalog', { query: search.trim() })
+      if (data) setProducts(data as CatalogProduct[])
+    }, 300)
+    return () => clearTimeout(timeout)
+  }, [search, supabase])
+
+  // Volver a cargar sin búsqueda si se borra el texto
+  useEffect(() => {
+    if (search.trim()) return
     supabase
       .from('catalog_view')
-      .select('org_name, brand, category')
+      .select('*')
       .eq('status', 'active')
-      .then(({ data }) => {
-        if (!data) return
-        setOrgs([...new Set(data.map((r) => r.org_name).filter(Boolean))] as string[])
-        setBrands([...new Set(data.map((r) => r.brand).filter(Boolean))] as string[])
-        setCats([...new Set(data.map((r) => r.category).filter(Boolean))] as string[])
-      })
-  }, [])
-
-  // ── Fetch productos ───────────────────────────────────────────────────────
-  const fetchProducts = useCallback(async () => {
-    setLoading(true)
-    const from = (page - 1) * ITEMS_PER_PAGE
-    const to = from + ITEMS_PER_PAGE - 1
-
-    let q = supabase
-      .from('catalog_view')
-      .select('*', { count: 'exact' })
-      .eq('status', 'active')
-      .range(from, to)
       .order('created_at', { ascending: false })
+      .limit(500)
+      .then(({ data }) => { if (data) setProducts(data as CatalogProduct[]) })
+  }, [search, supabase])
 
-    if (search)
-      q = q.or(
-        `description.ilike.%${search}%,sku.ilike.%${search}%,brand.ilike.%${search}%`
-      )
-    if (filterOrg) q = q.eq('org_name', filterOrg)
-    if (filterBrand) q = q.eq('brand', filterBrand)
-    if (filterCat) q = q.eq('category', filterCat)
-    if (filterStock === 'low') q = q.gt('stock_quantity', 0).lte('stock_quantity', 5)
-    if (filterStock === 'ok') q = q.gt('stock_quantity', 5)
+  // Extraer opciones de filtros
+  const brands     = useMemo(() => [...new Set(products.map(p => p.brand))].sort(), [products])
+  const categories = useMemo(() => [...new Set(products.map(p => p.category).filter(Boolean))].sort() as string[], [products])
 
-    const { data, count } = await q
-    setProducts((data as CatalogProduct[]) ?? [])
-    setTotal(count ?? 0)
-    setLoading(false)
-  }, [page, search, filterOrg, filterBrand, filterCat, filterStock])
+  // Filtrado local
+  const filtered = useMemo(() => {
+    return products.filter(p => {
+      if (selectedBrand && p.brand !== selectedBrand) return false
+      if (selectedCategory && p.category !== selectedCategory) return false
+      if (selectedAvail === 'instock'  && Number(p.stock_quantity) <= 5) return false
+      if (selectedAvail === 'lowstock' && (Number(p.stock_quantity) === 0 || Number(p.stock_quantity) > 5)) return false
+      if (selectedAvail === 'nostock'  && Number(p.stock_quantity) > 0) return false
+      return true
+    })
+  }, [products, selectedBrand, selectedCategory, selectedAvail])
 
-  useEffect(() => { setPage(1) }, [search, filterOrg, filterBrand, filterCat, filterStock])
-  useEffect(() => { fetchProducts() }, [fetchProducts])
+  // Stats
+  const totalBrands = useMemo(() => new Set(products.map(p => p.brand)).size, [products])
+  const totalOrgs   = useMemo(() => new Set(products.map((p: any) => p.organization_id)).size, [products])
 
-  // ── Contacto ──────────────────────────────────────────────────────────────
-  function handleContact(p: CatalogProduct, channel: 'whatsapp' | 'email') {
-    if (!auth.loggedIn) return
-
-    if (channel === 'whatsapp' && p.contact_whatsapp) {
-      const num = p.contact_whatsapp.replace(/\D/g, '')
-      const msg = encodeURIComponent(
-        `Hola! Te contacto desde Declavo por el siguiente producto:\n\n` +
-          `• SKU: ${p.sku}\n• Descripción: ${p.description}\n• Marca: ${p.brand}\n\n¿Podés darme más información?`
-      )
-      window.open(`https://wa.me/${num}?text=${msg}`, '_blank')
-      return
-    }
-
-    if (channel === 'email' && p.contact_email) {
-      const subject = encodeURIComponent(`Consulta de producto — ${p.sku} | Declavo`)
-      const body = encodeURIComponent(buildEmailBody(p))
-      window.open(`mailto:${p.contact_email}?subject=${subject}&body=${body}`, '_blank')
-    }
-  }
-
-  // ── Helpers UI ────────────────────────────────────────────────────────────
-  const totalPages = Math.ceil(total / ITEMS_PER_PAGE)
-
-  function FilterBtn({
-    active,
-    onClick,
-    label,
-  }: {
-    active: boolean
-    onClick: () => void
-    label: string
-  }) {
-    return (
-      <button
-        onClick={onClick}
-        className={clsx(
-          'text-left text-sm px-2 py-1.5 rounded-md transition-colors',
-          active
-            ? 'bg-brand-100 text-brand-900 font-medium'
-            : 'text-brand-500 hover:bg-brand-50'
-        )}
-      >
-        {label}
-      </button>
-    )
-  }
-
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex min-h-full">
-      {/* ── Sidebar ── */}
-      <aside className="w-52 flex-shrink-0 bg-white border-r border-brand-200 p-4 flex flex-col gap-4">
+    <>
+      {/* Orbs decorativos */}
+      <div className="bg-orb" style={{ width: 400, height: 400, background: 'var(--accent)', top: -100, right: '10%' }} />
+      <div className="bg-orb" style={{ width: 300, height: 300, background: 'var(--accent3)', bottom: '20%', left: '5%' }} />
 
-        {/* Filtro empresa: solo super_admin */}
-        {auth.isSuperAdmin && (
-          <>
-            <SidebarSection title="Empresa">
-              {['', ...orgs].map((o) => (
-                <FilterBtn
-                  key={o || '__all_orgs__'}
-                  active={filterOrg === o}
-                  onClick={() => setFilterOrg(o)}
-                  label={o || 'Todas'}
-                />
-              ))}
-            </SidebarSection>
-            <div className="h-px bg-brand-200" />
-          </>
-        )}
+      <Navbar />
 
-        <SidebarSection title="Marca" defaultOpen>
-          {['', ...brands].map((b) => (
-            <FilterBtn
-              key={b || '__all_brands__'}
-              active={filterBrand === b}
-              onClick={() => setFilterBrand(b)}
-              label={b || 'Todas'}
-            />
-          ))}
-        </SidebarSection>
+      <CatalogoSidebar
+        brands={brands}
+        categories={categories}
+        selectedBrand={selectedBrand}
+        selectedCategory={selectedCategory}
+        selectedAvail={selectedAvail}
+        onBrand={setSelectedBrand}
+        onCategory={setSelectedCategory}
+        onAvail={setSelectedAvail}
+      />
 
-        <div className="h-px bg-brand-200" />
-
-        <SidebarSection title="Categoría" defaultOpen={false}>
-          {['', ...cats].map((c) => (
-            <FilterBtn
-              key={c || '__all_cats__'}
-              active={filterCat === c}
-              onClick={() => setFilterCat(c)}
-              label={c || 'Todas'}
-            />
-          ))}
-        </SidebarSection>
-
-        <div className="h-px bg-brand-200" />
-
-        <SidebarSection title="Disponibilidad" defaultOpen={false}>
-          {([['', 'Todos'], ['ok', 'Con stock'], ['low', 'Poco stock']] as const).map(
-            ([val, label]) => (
-              <FilterBtn
-                key={val || '__all_stock__'}
-                active={filterStock === val}
-                onClick={() => setFilterStock(val)}
-                label={label}
-              />
-            )
-          )}
-        </SidebarSection>
-
-        {/* Aviso login — solo visible cuando auth ya resolvió y no hay sesión */}
-        {auth.ready && !auth.loggedIn && (
-          <>
-            <div className="h-px bg-brand-200" />
-            <div className="bg-brand-50 border border-brand-200 rounded-lg p-3 text-center">
-              <Lock size={14} className="mx-auto mb-1.5 text-brand-400" />
-              <p className="text-[11px] text-brand-500 leading-snug">
-                <a
-                  href="/login"
-                  className="font-medium text-brand-900 underline underline-offset-2"
-                >
-                  Iniciá sesión
-                </a>{' '}
-                para contactar vendedores
-              </p>
-            </div>
-          </>
-        )}
-      </aside>
-
-      {/* ── Main ── */}
-      <div className="flex-1 p-6 flex flex-col gap-5">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search
-              size={13}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-400"
-            />
-            <input
-              type="text"
-              className="input pl-8"
-              placeholder="Buscar por SKU, descripción o marca…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+      {/* Main */}
+      <main
+        className="relative z-10"
+        style={{
+          marginLeft: SIDEBAR_W,
+          paddingTop: 64 + 28,
+          padding: `${64 + 28}px 28px 60px`,
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
+          <div>
+            <h1 className="font-display font-bold text-2xl tracking-tight" style={{ color: 'var(--text-primary)' }}>
+              Catálogo General
+            </h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+              Stock disponible de todas las empresas del ecosistema
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-brand-400">{total} productos</span>
-            <div className="flex bg-brand-100 border border-brand-200 rounded-lg p-0.5 gap-0.5">
-              {(['grid', 'list'] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setView(v)}
-                  className={clsx(
-                    'w-7 h-7 rounded-md flex items-center justify-center transition-colors',
-                    view === v
-                      ? 'bg-white text-brand-900'
-                      : 'text-brand-400 hover:text-brand-900'
-                  )}
-                >
-                  {v === 'grid' ? <LayoutGrid size={14} /> : <List size={14} />}
-                </button>
-              ))}
-            </div>
+          <div className="flex gap-2">
+            <a href="/mis-productos" className="btn-ghost no-underline">
+              ⬆ Importar Excel
+            </a>
+            <a href="/mis-productos?new=1" className="btn-primary no-underline">
+              ＋ Publicar producto
+            </a>
           </div>
         </div>
 
-        {/* Content */}
-        {loading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="text-sm text-brand-400">Cargando productos…</p>
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <StatCard label="Productos activos" value={products.length} sub="en el catálogo" />
+          <StatCard label="Empresas" value={totalOrgs} sub="participando en la red" />
+          <StatCard label="Marcas" value={totalBrands} sub="en el ecosistema" />
+          <StatCard label="Mostrando" value={filtered.length} sub={filtered.length !== products.length ? 'con filtros activos' : 'todos los productos'} />
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-2.5 flex-wrap mb-5">
+          {/* Search */}
+          <div className="relative flex-1 min-w-48 max-w-xs">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
+              <SearchIcon />
+            </span>
+            <input
+              className="input pl-9"
+              type="text"
+              placeholder="Buscar SKU, descripción, marca…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
           </div>
-        ) : products.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center">
+
+          {/* Chips de categoría rápidos */}
+          <button
+            className={`filter-chip ${!selectedCategory ? 'active' : ''}`}
+            onClick={() => setSelectedCategory(null)}
+          >
+            Todos
+          </button>
+          {categories.slice(0, 4).map(cat => (
+            <button
+              key={cat}
+              className={`filter-chip ${selectedCategory === cat ? 'active' : ''}`}
+              onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+            >
+              {cat}
+            </button>
+          ))}
+
+          {/* View toggle */}
+          <div
+            className="flex ml-auto rounded-xl overflow-hidden"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+          >
+            {(['grid', 'list'] as const).map(v => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className="flex items-center justify-center transition-all duration-200"
+                style={{
+                  width: 38, height: 38,
+                  background: view === v ? 'var(--accent-glow)' : 'transparent',
+                  color: view === v ? 'var(--accent)' : 'var(--text-muted)',
+                  border: 'none', cursor: 'pointer',
+                }}
+              >
+                {v === 'grid' ? <GridIcon /> : <ListIcon />}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Contenido */}
+        {loading ? (
+          <div className="flex items-center justify-center py-20" style={{ color: 'var(--text-muted)' }}>
             <div className="text-center">
-              <SlidersHorizontal size={32} className="mx-auto mb-3 text-brand-300" />
-              <p className="text-sm font-medium text-brand-900 mb-1">Sin resultados</p>
-              <p className="text-sm text-brand-400">
-                Probá con otros filtros o términos de búsqueda.
-              </p>
+              <div className="text-4xl mb-3">⏳</div>
+              <p className="text-sm">Cargando catálogo…</p>
             </div>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-20" style={{ color: 'var(--text-muted)' }}>
+            <div className="text-5xl mb-3">📭</div>
+            <h3 className="font-display font-semibold text-lg mb-1" style={{ color: 'var(--text-secondary)' }}>
+              Sin resultados
+            </h3>
+            <p className="text-sm">Probá con otros filtros o términos de búsqueda</p>
+          </div>
         ) : view === 'grid' ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
-            {products.map((p) => (
-              <ProductCard
-                key={p.id}
-                product={p}
-                onContact={handleContact}
-                auth={auth}
-              />
+          <div className="grid gap-4 stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(268px, 1fr))' }}>
+            {filtered.map(p => (
+              <ProductCard key={p.id} product={p} showOrg={isSuperAdmin} />
             ))}
           </div>
         ) : (
-          /* Vista lista */
-          <div className="card overflow-hidden">
-            <table className="w-full" style={{ tableLayout: 'fixed' }}>
-              <thead>
-                <tr>
-                  <th className="table-th" style={{ width: 130 }}>SKU</th>
-                  <th className="table-th">Descripción</th>
-                  <th className="table-th" style={{ width: 90 }}>Marca</th>
-                  {auth.isSuperAdmin && (
-                    <th className="table-th" style={{ width: 130 }}>Empresa</th>
-                  )}
-                  <th className="table-th" style={{ width: 70 }}>Stock</th>
-                  <th className="table-th" style={{ width: 100, textAlign: 'right' }}>
-                    Contacto
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p) => (
-                  <tr key={p.id} className="table-tr">
-                    <td className="table-td font-mono text-[11px] text-brand-400 truncate">
-                      {p.sku}
-                    </td>
-                    <td className="table-td font-medium truncate">{p.description}</td>
-                    <td className="table-td text-brand-500">{p.brand}</td>
-                    {auth.isSuperAdmin && (
-                      <td className="table-td">
-                        <span className="badge badge-gray">{p.org_name}</span>
-                      </td>
-                    )}
-                    <td className="table-td font-mono">
-                      <span
-                        className={clsx(
-                          'font-medium',
-                          p.stock_quantity <= 5 ? 'text-amber-700' : 'text-green-700'
-                        )}
-                      >
-                        {p.stock_quantity}
-                      </span>
-                    </td>
-                    <td className="table-td">
-                      {auth.loggedIn ? (
-                        <div className="flex justify-end gap-1.5">
-                          {p.contact_whatsapp && (
-                            <button
-                              onClick={() => handleContact(p, 'whatsapp')}
-                              className="icon-btn"
-                              title="Consultar por WhatsApp"
-                            >
-                              <MessageCircle size={13} />
-                            </button>
-                          )}
-                          {p.contact_email && (
-                            <button
-                              onClick={() => handleContact(p, 'email')}
-                              className="icon-btn"
-                              title="Consultar por Email"
-                            >
-                              <Mail size={13} />
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex justify-end">
-                          <a
-                            href="/login"
-                            className="flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-900 transition-colors"
-                          >
-                            <Lock size={11} />
-                            <span>Ingresar</span>
-                          </a>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ProductTable products={filtered} showOrg={isSuperAdmin} />
         )}
-
-        {/* Paginación */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-1.5">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="btn btn-sm"
-            >
-              ←
-            </button>
-            {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
-              const n = i + 1
-              return (
-                <button
-                  key={n}
-                  onClick={() => setPage(n)}
-                  className={clsx(
-                    'btn btn-sm w-8 justify-center',
-                    page === n && 'btn-primary'
-                  )}
-                >
-                  {n}
-                </button>
-              )
-            })}
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="btn btn-sm"
-            >
-              →
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── Email profesional ────────────────────────────────────────────────────────
-function buildEmailBody(p: CatalogProduct): string {
-  const today = new Date().toLocaleDateString('es-AR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-  return `Buenos días,
-
-Me comunico con ustedes a través de Declavo en relación al siguiente producto publicado en la plataforma:
-
-──────────────────────────────────────
-DETALLE DEL PRODUCTO
-──────────────────────────────────────
-SKU:          ${p.sku}
-Descripción:  ${p.description}
-Marca:        ${p.brand}${p.category ? `\nCategoría:    ${p.category}` : ''}
-Stock actual: ${p.stock_quantity} unidades
-──────────────────────────────────────
-
-Quisiera obtener más información sobre disponibilidad, condiciones comerciales y plazos de entrega.
-
-Quedo a disposición para coordinar según su conveniencia.
-
-Saludos cordiales,
-
-─────────────────────────
-Enviado desde Declavo
-Plataforma de visibilidad de stock entre colegas del rubro tecnológico
-${today}
-─────────────────────────`
-}
-
-// ─── ProductCard ──────────────────────────────────────────────────────────────
-function ProductCard({
-  product: p,
-  onContact,
-  auth,
-}: {
-  product: CatalogProduct
-  onContact: (p: CatalogProduct, ch: 'whatsapp' | 'email') => void
-  auth: AuthState
-}) {
-  const hasContact = !!(p.contact_whatsapp || p.contact_email)
-
-  return (
-    <div className="card overflow-hidden hover:border-brand-300 transition-colors">
-      <div className="h-28 bg-brand-50 border-b border-brand-200 flex items-center justify-center relative">
-        <div className="w-12 h-12 bg-brand-200 rounded-lg opacity-40" />
-
-        {/* Badge empresa: solo super_admin */}
-        {auth.isSuperAdmin && (
-          <span className="absolute top-2 left-2 badge badge-gray text-[10px]">
-            {p.org_name}
-          </span>
-        )}
-
-        <span
-          className={clsx(
-            'absolute top-2 right-2 badge',
-            p.stock_quantity > 5 ? 'badge-green' : 'badge-amber'
-          )}
-        >
-          {p.stock_quantity > 5 ? 'Stock OK' : `${p.stock_quantity} u.`}
-        </span>
-      </div>
-
-      <div className="p-3">
-        <p className="font-mono text-[10px] text-brand-400 mb-1">{p.sku}</p>
-        <p className="text-sm font-medium leading-snug mb-1 line-clamp-2">
-          {p.description}
-        </p>
-        <p className="text-xs text-brand-400 mb-3">
-          {p.brand}
-          {p.category ? ` · ${p.category}` : ''}
-        </p>
-
-        <div className="flex items-center justify-between border-t border-brand-100 pt-2.5">
-          <span className="text-xs text-brand-400">
-            Stock:{' '}
-            <span
-              className={clsx(
-                'font-medium',
-                p.stock_quantity <= 5 ? 'text-amber-700' : 'text-brand-900'
-              )}
-            >
-              {p.stock_quantity} u.
-            </span>
-          </span>
-
-          {auth.loggedIn ? (
-            <div className="flex gap-1.5">
-              {p.contact_whatsapp && (
-                <button
-                  onClick={() => onContact(p, 'whatsapp')}
-                  className="icon-btn"
-                  title="Consultar por WhatsApp"
-                >
-                  <MessageCircle size={13} />
-                </button>
-              )}
-              {p.contact_email && (
-                <button
-                  onClick={() => onContact(p, 'email')}
-                  className="icon-btn"
-                  title="Consultar por Email"
-                >
-                  <Mail size={13} />
-                </button>
-              )}
-            </div>
-          ) : (
-            /* Solo mostrar "Consultar" si hay datos de contacto en la org */
-            hasContact && (
-              <a
-                href="/login"
-                className="flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-900 transition-colors"
-                title="Iniciá sesión para consultar"
-              >
-                <Lock size={11} />
-                <span>Consultar</span>
-              </a>
-            )
-          )}
-        </div>
-      </div>
-    </div>
+      </main>
+    </>
   )
 }
