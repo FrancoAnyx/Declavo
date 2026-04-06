@@ -2,29 +2,25 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useTheme } from '@/components/ThemeProvider'
 import { useProfile } from '@/context/ProfileContext'
+import { useTheme } from '@/components/ThemeProvider'
 
-// Íconos SVG inline livianos
+/* ── Íconos de tema ── */
 function MoonIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
     </svg>
   )
 }
 function SunIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="5"/>
-      <line x1="12" y1="1" x2="12" y2="3"/>
-      <line x1="12" y1="21" x2="12" y2="23"/>
-      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-      <line x1="1" y1="12" x2="3" y2="12"/>
-      <line x1="21" y1="12" x2="23" y2="12"/>
-      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
     </svg>
   )
 }
@@ -34,61 +30,56 @@ const NAV_LINKS = [
   { href: '/mis-productos', label: 'Mis Productos' },
 ]
 
-const ADMIN_LINK = { href: '/admin', label: 'Admin' }
-
 export default function Navbar() {
   const pathname = usePathname()
-  const { theme, toggle } = useTheme()
   const { profile } = useProfile()
+  const { theme, toggle } = useTheme()
 
-  const isActive = (href: string) =>
-    pathname === href || pathname.startsWith(href + '/')
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
+  const isSuperAdmin = profile?.role === 'super_admin'
+  const links = isSuperAdmin ? [...NAV_LINKS, { href: '/admin', label: 'Admin' }] : NAV_LINKS
 
-  const orgInitials = profile?.organization?.name
-    ? profile.organization.name.slice(0, 2).toUpperCase()
-    : '??'
-
-  const links = profile?.role === 'super_admin'
-    ? [...NAV_LINKS, ADMIN_LINK]
-    : NAV_LINKS
+  // Nombre e iniciales de la organización
+  const orgName: string = (profile as any)?.organization?.name ?? profile?.full_name ?? ''
+  const orgInitials = orgName ? orgName.slice(0, 2).toUpperCase() : '?'
 
   return (
     <header
-      className="fixed top-0 left-0 right-0 z-50 flex items-center gap-4 px-6"
       style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
         height: 64,
+        display: 'flex', alignItems: 'center', gap: 0, padding: '0 24px',
         backgroundColor: 'var(--bg-surface)',
         borderBottom: '1px solid var(--border)',
         backdropFilter: 'blur(12px)',
-        transition: 'background 0.3s, border-color 0.3s',
+        transition: 'background 0.25s, border-color 0.25s',
       }}
     >
       {/* Logo */}
-      <Link href="/catalogo" className="flex items-center gap-2 no-underline">
-        <span
-          style={{
-            width: 8, height: 8, borderRadius: '50%',
-            background: 'var(--accent)',
-            boxShadow: '0 0 10px var(--accent)',
-            flexShrink: 0,
-          }}
-        />
-        <span
-          className="font-display font-extrabold text-xl tracking-tight"
-          style={{ color: 'var(--text-primary)', letterSpacing: '-0.5px' }}
-        >
+      <Link href="/catalogo" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', marginRight: 28 }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+          background: 'var(--accent)',
+          boxShadow: '0 0 8px var(--accent)',
+        }} />
+        <span style={{
+          fontFamily: 'Syne, -apple-system, sans-serif',
+          fontWeight: 800, fontSize: 20, letterSpacing: '-0.5px',
+          color: 'var(--text-primary)',
+        }}>
           Declavo
         </span>
       </Link>
 
-      {/* Nav links */}
-      <nav className="flex items-center gap-1 ml-8">
+      {/* Links de navegación */}
+      <nav style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         {links.map(link => (
           <Link
             key={link.href}
             href={link.href}
-            className="px-3.5 py-1.5 rounded-xl text-sm font-medium transition-all duration-200 no-underline"
             style={{
+              padding: '6px 14px', borderRadius: 9, fontSize: 14, fontWeight: 500,
+              textDecoration: 'none', transition: 'all 0.18s',
               color: isActive(link.href) ? 'var(--accent)' : 'var(--text-secondary)',
               background: isActive(link.href) ? 'var(--accent-glow)' : 'transparent',
             }}
@@ -98,48 +89,44 @@ export default function Navbar() {
         ))}
       </nav>
 
-      {/* Spacer */}
-      <div className="flex-1" />
+      <div style={{ flex: 1 }} />
 
-      {/* Theme toggle */}
+      {/* Toggle de tema */}
       <button
         onClick={toggle}
         title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-        className="flex items-center justify-center rounded-xl transition-all duration-200"
         style={{
-          width: 40, height: 40,
+          width: 38, height: 38, borderRadius: 9, marginRight: 10,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', transition: 'all 0.18s',
           background: 'var(--bg-card)',
           border: '1px solid var(--border)',
           color: 'var(--text-secondary)',
-          cursor: 'pointer',
         }}
       >
         {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
       </button>
 
-      {/* Company badge */}
+      {/* Badge de empresa (si hay sesión) */}
       {profile && (
-        <div
-          className="flex items-center gap-2 rounded-xl transition-all duration-200"
-          style={{
-            padding: '4px 12px 4px 4px',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
-          }}
-        >
-          {/* Avatar */}
-          <div
-            className="flex items-center justify-center rounded-xl font-display font-bold text-xs text-white flex-shrink-0"
-            style={{
-              width: 32, height: 32,
-              background: 'linear-gradient(135deg, var(--accent), var(--accent3))',
-            }}
-          >
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '4px 12px 4px 4px', borderRadius: 10,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+        }}>
+          <div style={{
+            width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+            background: 'linear-gradient(135deg, var(--accent), var(--accent3))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: '#fff',
+          }}>
             {orgInitials}
           </div>
-          <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-            {profile.organization?.name ?? profile.full_name ?? 'Mi empresa'}
-          </span>
+          {orgName && (
+            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {orgName}
+            </span>
+          )}
         </div>
       )}
     </header>
