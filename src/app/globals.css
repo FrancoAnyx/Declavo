@@ -1,7 +1,6 @@
 /* ============================================================
    DECLAVO — Design System CSS
-   Solo estilos. No modifica lógica, layouts ni providers.
-   Dark mode: default (sin clase). Light mode: clase .light en <html>
+   Dark mode: default. Light mode: clase .light en <html>
    ============================================================ */
 
 @tailwind base;
@@ -11,37 +10,26 @@
 /* ── TOKENS DARK (default) ── */
 @layer base {
   :root {
-    /* Superficies */
     --bg-base:        #0f1117;
     --bg-surface:     #161b27;
     --bg-card:        #1c2133;
     --bg-card-hover:  #202840;
     --bg-sidebar:     #161b27;
-
-    /* Bordes */
     --border:         rgba(255,255,255,0.1);
     --border-accent:  rgba(99,102,241,0.45);
-
-    /* Texto — contraste mejorado */
     --text-primary:   #e8ecff;
     --text-secondary: #9ba3cc;
     --text-muted:     #5c6490;
-
-    /* Acento */
     --accent:         #6366f1;
     --accent-hover:   #7577f3;
     --accent-glow:    rgba(99,102,241,0.18);
     --accent3:        #a78bfa;
-
-    /* Semánticos */
     --success:        #34d399;
     --success-bg:     rgba(52,211,153,0.12);
     --warning:        #fbbf24;
     --warning-bg:     rgba(251,191,36,0.12);
     --danger:         #f87171;
     --danger-bg:      rgba(248,113,113,0.12);
-
-    /* Sombras */
     --shadow-card:    0 4px 24px rgba(0,0,0,0.5);
     --shadow-glow:    0 0 32px rgba(99,102,241,0.12);
   }
@@ -53,27 +41,21 @@
     --bg-card:        #ffffff;
     --bg-card-hover:  #f8f9ff;
     --bg-sidebar:     #ffffff;
-
     --border:         rgba(0,0,0,0.09);
     --border-accent:  rgba(99,102,241,0.35);
-
-    /* Texto — contraste mejorado en claro */
     --text-primary:   #111827;
     --text-secondary: #374151;
     --text-muted:     #6b7280;
-
     --accent:         #5254d4;
     --accent-hover:   #4446c0;
     --accent-glow:    rgba(99,102,241,0.1);
     --accent3:        #7c3aed;
-
     --success:        #047857;
     --success-bg:     rgba(4,120,87,0.1);
     --warning:        #b45309;
     --warning-bg:     rgba(180,83,9,0.1);
     --danger:         #b91c1c;
     --danger-bg:      rgba(185,28,28,0.1);
-
     --shadow-card:    0 2px 12px rgba(0,0,0,0.08);
     --shadow-glow:    0 0 24px rgba(99,102,241,0.07);
   }
@@ -90,7 +72,6 @@
     min-height: 100vh;
   }
 
-  /* Asegurar legibilidad de inputs en cualquier modo */
   input, select, textarea {
     color: var(--text-primary);
     background-color: var(--bg-base);
@@ -100,10 +81,8 @@
 /* ── COMPONENTES ── */
 @layer components {
 
-  /* ── Tipografía display ── */
-  .font-display {
-    font-family: 'Syne', -apple-system, sans-serif;
-  }
+  /* ── Tipografía ── */
+  .font-display { font-family: 'Syne', -apple-system, sans-serif; }
 
   /* ── Cards ── */
   .card {
@@ -137,83 +116,64 @@
     filter: blur(24px);
     pointer-events: none;
   }
-  .stat-card:hover {
-    border-color: var(--border-accent);
-    box-shadow: var(--shadow-glow);
-    transform: translateY(-1px);
-  }
+  .stat-card:hover { border-color: var(--border-accent); box-shadow: var(--shadow-glow); transform: translateY(-1px); }
 
-  /* ── Botones ── */
-  .btn-primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 9px 18px;
-    border-radius: 10px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    color: #ffffff;
-    background: var(--accent);
-    transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
-    box-shadow: 0 0 16px var(--accent-glow);
-    text-decoration: none;
+  /* ── Botones Tailwind admin ─────────────────────────────── */
+  /* .btn base */
+  .btn {
+    @apply inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium
+           transition-colors cursor-pointer border select-none;
+    border-color: rgba(0,0,0,0.12);
+    background: white;
+    color: #374151;
   }
-  .btn-primary:hover {
-    background: var(--accent-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 20px var(--accent-glow);
-  }
-  .btn-primary:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    transform: none;
-  }
+  .light .btn { background: white; color: #374151; border-color: #d1d5db; }
+  .btn:hover { background: #f9fafb; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .btn-ghost {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 9px 18px;
-    border-radius: 10px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
+  /* dark mode btn */
+  :not(.light) .btn {
     background: var(--bg-card);
-    border: 1px solid var(--border);
     color: var(--text-secondary);
-    transition: background 0.2s, color 0.2s, border-color 0.2s;
-    text-decoration: none;
+    border-color: var(--border);
   }
-  .btn-ghost:hover {
-    background: var(--bg-card-hover);
-    color: var(--text-primary);
-    border-color: var(--border-accent);
-  }
+  :not(.light) .btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
 
-  .btn-danger-ghost {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 5px 10px;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
+  /* .btn-primary (Tailwind admin) */
+  .btn-primary {
+    @apply inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold
+           transition-all cursor-pointer border-0 select-none;
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 14px var(--accent-glow);
+  }
+  .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+  /* .btn-sm */
+  .btn-sm { @apply text-xs px-2.5 py-1.5 rounded-md gap-1; }
+
+  /* .btn-danger */
+  .btn-danger {
+    @apply inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold
+           transition-colors cursor-pointer border-0;
     background: var(--danger-bg);
-    border: 1px solid rgba(248,113,113,0.25);
     color: var(--danger);
-    transition: all 0.2s;
   }
-  .btn-danger-ghost:hover { background: rgba(248,113,113,0.2); }
+  .btn-danger:hover { background: rgba(248,113,113,0.22); }
 
-  /* ── Inputs ── */
+  /* ── Label form ── */
+  .label {
+    @apply block text-xs font-semibold mb-1.5;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  /* ── Inputs Tailwind (compatibles con .input del catálogo) ── */
   .input {
     width: 100%;
-    padding: 10px 13px;
+    padding: 9px 12px;
     border-radius: 10px;
     font-family: 'DM Sans', sans-serif;
     font-size: 14px;
@@ -229,106 +189,75 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-glow);
   }
-  /* Light mode: fondo ligeramente diferenciado */
-  .light .input {
-    background: #f9fafb;
-    border-color: #d1d5db;
-  }
-  .light .input:focus {
-    background: #ffffff;
-    border-color: var(--accent);
-  }
+  .light .input { background: #f9fafb; border-color: #d1d5db; }
+  .light .input:focus { background: #fff; border-color: var(--accent); }
 
-  .select {
-    width: 100%;
-    padding: 10px 13px;
-    border-radius: 10px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    outline: none;
-    cursor: pointer;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    -webkit-appearance: none;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 36px;
+  /* ── Badges base ── */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold;
   }
-  .select:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-  }
-  .select option { background: var(--bg-surface); color: var(--text-primary); }
+  .badge-green  { @apply badge; background: var(--success-bg); color: var(--success); }
+  .badge-amber  { background: var(--warning-bg); color: var(--warning); @apply inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold; }
+  .badge-gray   { @apply badge; background: rgba(100,116,139,0.12); color: #64748b; }
+  .badge-red    { @apply badge; background: var(--danger-bg); color: var(--danger); }
+  .badge-purple { @apply badge; background: rgba(167,139,250,0.12); color: #a78bfa; }
 
-  /* ── Badges ── */
+  /* ── Badges catálogo ── */
   .badge-accent {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.2px;
-    background: var(--accent-glow);
-    border: 1px solid var(--border-accent);
-    color: var(--accent);
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.2px;
+    background: var(--accent-glow); border: 1px solid var(--border-accent); color: var(--accent);
   }
-  .light .badge-accent { color: var(--accent); background: rgba(99,102,241,0.1); }
-
   .badge-success {
     display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: 20px;
-    font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700;
     background: var(--success-bg); color: var(--success);
   }
   .badge-warning {
     display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: 20px;
-    font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700;
     background: var(--warning-bg); color: var(--warning);
   }
   .badge-danger {
     display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: 20px;
-    font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700;
     background: var(--danger-bg); color: var(--danger);
   }
 
-  /* ── Contacto ── */
-  .btn-wa {
-    flex: 1;
-    display: flex; align-items: center; justify-content: center; gap: 5px;
-    padding: 8px; border-radius: 8px;
-    font-size: 12px; font-weight: 600;
-    cursor: pointer; transition: all 0.2s;
-    background: var(--success-bg);
-    border: 1px solid rgba(52,211,153,0.25);
-    color: var(--success);
+  /* ── Icon buttons ── */
+  .icon-btn {
+    @apply w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer border-0;
+    background: transparent;
+    color: var(--text-muted);
   }
-  .btn-wa:hover { background: rgba(52,211,153,0.2); }
-  .btn-wa:disabled { opacity: 0.35; cursor: not-allowed; }
+  .icon-btn:hover { background: rgba(0,0,0,0.06); color: var(--text-primary); }
+  :not(.light) .icon-btn:hover { background: rgba(255,255,255,0.07); }
+  .icon-btn-danger { color: var(--danger) !important; }
+  .icon-btn-danger:hover { background: var(--danger-bg) !important; }
 
-  .btn-email {
-    flex: 1;
-    display: flex; align-items: center; justify-content: center; gap: 5px;
-    padding: 8px; border-radius: 8px;
-    font-size: 12px; font-weight: 600;
-    cursor: pointer; transition: all 0.2s;
-    background: var(--accent-glow);
-    border: 1px solid var(--border-accent);
-    color: var(--accent);
+  /* ── Tabla admin ── */
+  .table-th {
+    @apply px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide;
+    color: var(--text-muted);
+    background: var(--bg-base);
+    border-bottom: 1px solid var(--border);
   }
-  .btn-email:hover { background: rgba(99,102,241,0.2); }
-  .btn-email:disabled { opacity: 0.35; cursor: not-allowed; }
+  .table-td {
+    @apply px-3 py-2.5 text-sm;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .table-tr { transition: background 0.12s; }
+  .table-tr:last-child .table-td { border-bottom: none; }
+  .table-tr:hover { background: rgba(255,255,255,0.02); }
+  .light .table-tr:hover { background: rgba(0,0,0,0.025); }
 
-  /* ── Sidebar item ── */
+  /* ── Sidebar items (admin) ── */
   .sidebar-item {
     display: flex; align-items: center; gap: 10px;
-    padding: 9px 12px; border-radius: 10px;
+    padding: 8px 12px; border-radius: 10px;
     font-size: 14px; font-weight: 500;
     color: var(--text-secondary);
     cursor: pointer; transition: all 0.18s;
@@ -337,74 +266,79 @@
     text-align: left; width: 100%;
     text-decoration: none;
   }
-  .sidebar-item:hover {
-    background: rgba(255,255,255,0.05);
-    color: var(--text-primary);
-  }
-  .light .sidebar-item:hover {
-    background: rgba(0,0,0,0.04);
-    color: var(--text-primary);
-  }
-  .sidebar-item.active {
-    background: var(--accent-glow);
-    color: var(--accent);
+  .sidebar-item:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+  .light .sidebar-item:hover { background: rgba(0,0,0,0.04); color: var(--text-primary); }
+  .sidebar-item-active {
+    background: var(--accent-glow) !important;
+    color: var(--accent) !important;
     font-weight: 600;
   }
-  .sidebar-item.active::before {
+  .sidebar-item-active::before {
     content: '';
     position: absolute; left: 0; top: 50%; transform: translateY(-50%);
     width: 3px; height: 18px; border-radius: 2px;
     background: var(--accent);
   }
 
-  /* ── Filter chip ── */
-  .filter-chip {
-    padding: 7px 14px; border-radius: 8px;
-    font-size: 13px; font-weight: 500;
-    cursor: pointer; white-space: nowrap;
-    transition: all 0.18s;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
+  /* ── Botones contacto catálogo ── */
+  .btn-primary-catalog {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 18px; border-radius: 10px;
+    font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none; color: #ffffff;
+    background: var(--accent); transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 0 16px var(--accent-glow); text-decoration: none;
   }
-  .filter-chip:hover {
-    background: var(--bg-card-hover);
-    color: var(--text-primary);
-    border-color: rgba(255,255,255,0.15);
-  }
-  .light .filter-chip:hover { border-color: rgba(0,0,0,0.15); }
-  .filter-chip.active {
-    background: var(--accent-glow);
-    border-color: var(--border-accent);
-    color: var(--accent);
-    font-weight: 600;
-  }
+  .btn-primary-catalog:hover { background: var(--accent-hover); transform: translateY(-1px); }
 
-  /* ── Tabla ── */
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 18px; border-radius: 10px;
+    font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
+    cursor: pointer; background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text-secondary); transition: all 0.2s; text-decoration: none;
+  }
+  .btn-ghost:hover { background: var(--bg-card-hover); color: var(--text-primary); border-color: var(--border-accent); }
+
+  .btn-wa {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+    padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+    background: var(--success-bg); border: 1px solid rgba(52,211,153,0.25); color: var(--success);
+  }
+  .btn-wa:hover { background: rgba(52,211,153,0.2); }
+  .btn-wa:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-email {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+    padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+    background: var(--accent-glow); border: 1px solid var(--border-accent); color: var(--accent);
+  }
+  .btn-email:hover { background: rgba(99,102,241,0.2); }
+  .btn-email:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ── Filter chips ── */
+  .filter-chip {
+    padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
+    cursor: pointer; white-space: nowrap; transition: all 0.18s;
+    background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary);
+  }
+  .filter-chip:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+  .filter-chip.active { background: var(--accent-glow); border-color: var(--border-accent); color: var(--accent); font-weight: 600; }
+
+  /* ── Tabla catálogo ── */
   .data-table { width: 100%; border-collapse: collapse; }
   .data-table thead th {
     padding: 11px 16px; text-align: left;
     font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
-    color: var(--text-muted);
-    background: var(--bg-base);
-    border-bottom: 1px solid var(--border);
+    color: var(--text-muted); background: var(--bg-base); border-bottom: 1px solid var(--border);
   }
-  .data-table tbody tr {
-    border-bottom: 1px solid var(--border);
-    transition: background 0.15s;
-  }
+  .data-table tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
   .data-table tbody tr:last-child { border-bottom: none; }
   .data-table tbody tr:hover { background: rgba(255,255,255,0.03); }
   .light .data-table tbody tr:hover { background: rgba(0,0,0,0.025); }
   .data-table tbody td { padding: 12px 16px; font-size: 14px; color: var(--text-secondary); }
-
-  /* ── Upload zone ── */
-  .upload-zone {
-    border: 2px dashed var(--border);
-    border-radius: 12px; padding: 28px;
-    text-align: center; cursor: pointer; transition: all 0.2s;
-  }
-  .upload-zone:hover { border-color: var(--accent); background: var(--accent-glow); }
 
   /* ── Orb decorativo ── */
   .bg-orb {
@@ -429,20 +363,12 @@
   from { opacity: 0; transform: scale(0.95) translateY(14px); }
   to   { opacity: 1; transform: none; }
 }
-@keyframes toastIn {
-  from { opacity: 0; transform: translateX(36px); }
-  to   { opacity: 1; transform: none; }
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .animate-fade-in-up { animation: fadeInUp 0.28s ease both; }
 .animate-modal-in   { animation: modalIn 0.24s cubic-bezier(0.34,1.4,0.64,1) both; }
-.animate-toast-in   { animation: toastIn 0.28s ease both; }
 .animate-spin       { animation: spin 0.9s linear infinite; }
 
-/* Stagger animación en grillas */
 .stagger > *:nth-child(1)  { animation-delay: 0ms; }
 .stagger > *:nth-child(2)  { animation-delay: 35ms; }
 .stagger > *:nth-child(3)  { animation-delay: 70ms; }
@@ -451,15 +377,5 @@
 .stagger > *:nth-child(6)  { animation-delay: 175ms; }
 .stagger > *:nth-child(n+7){ animation-delay: 210ms; }
 
-/* ── PÁGINA DE LOGIN — estilos específicos ── */
-/* Mejora el login existente sin cambiar su estructura */
-.login-card {
-  background: var(--bg-card) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 20px !important;
-  box-shadow: var(--shadow-card) !important;
-}
-
-/* Asegurar que links de auth tengan buen color */
 a { color: var(--accent); }
 a:hover { color: var(--accent-hover); }
