@@ -64,6 +64,41 @@ export interface ContactRequest {
   created_at: string
 }
 
+export interface ImportHistory {
+  id: string
+  organization_id: string
+  uploaded_by: string | null
+  filename: string
+  total_rows: number
+  ok_rows: number
+  error_rows: number
+  snapshot: ImportRow[]
+  created_at: string
+}
+
+export interface ImportRow {
+  sku: string
+  description: string
+  brand: string
+  category?: string | null
+  stock_quantity: number
+  price?: number | null
+  contact_whatsapp?: string
+  contact_email?: string
+}
+
+export interface ProductMessage {
+  id: string
+  product_id: string
+  sender_id: string
+  sender_org_id: string | null
+  body: string
+  created_at: string
+  // joined fields
+  sender_name?: string | null
+  sender_org_name?: string | null
+}
+
 export interface CatalogProduct extends Product {
   org_name: string
   org_logo_url: string | null
@@ -74,17 +109,19 @@ export interface CatalogProduct extends Product {
 export type Database = {
   public: {
     Tables: {
-      organizations: { Row: Organization; Insert: Partial<Organization>; Update: Partial<Organization> }
-      profiles:       { Row: Profile;      Insert: Partial<Profile>;      Update: Partial<Profile> }
-      products:       { Row: Product;      Insert: Partial<Product>;      Update: Partial<Product> }
-      invitations:    { Row: Invitation;   Insert: Partial<Invitation>;   Update: Partial<Invitation> }
-      contact_requests: { Row: ContactRequest; Insert: Partial<ContactRequest>; Update: Partial<ContactRequest> }
+      organizations:   { Row: Organization;    Insert: Partial<Organization>;    Update: Partial<Organization> }
+      profiles:        { Row: Profile;         Insert: Partial<Profile>;         Update: Partial<Profile> }
+      products:        { Row: Product;         Insert: Partial<Product>;         Update: Partial<Product> }
+      invitations:     { Row: Invitation;      Insert: Partial<Invitation>;      Update: Partial<Invitation> }
+      contact_requests:{ Row: ContactRequest;  Insert: Partial<ContactRequest>;  Update: Partial<ContactRequest> }
+      import_history:  { Row: ImportHistory;   Insert: Partial<ImportHistory>;   Update: Partial<ImportHistory> }
+      product_messages:{ Row: ProductMessage;  Insert: Partial<ProductMessage>;  Update: Partial<ProductMessage> }
     }
     Views: {
       catalog_view: { Row: CatalogProduct }
     }
     Functions: {
-      search_catalog: { Args: { search_term: string }; Returns: CatalogProduct[] }
+      search_catalog: { Args: { query: string }; Returns: CatalogProduct[] }
     }
   }
 }
