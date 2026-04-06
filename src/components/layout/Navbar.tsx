@@ -1,11 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useProfile } from '@/context/ProfileContext'
 import { useTheme } from '@/components/ThemeProvider'
+import { createClient } from '@/lib/supabase/client'
 
-/* ── Íconos de tema ── */
 function MoonIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -24,6 +24,13 @@ function SunIcon() {
     </svg>
   )
 }
+function LogOutIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  )
+}
 
 const NAV_LINKS = [
   { href: '/catalogo',      label: 'Catálogo' },
@@ -32,23 +39,34 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const pathname = usePathname()
-  const { profile } = useProfile()
+  const router   = useRouter()
+  const { user, loading } = useProfile()
   const { theme, toggle } = useTheme()
+  const supabase = createClient()
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
+  const profile      = user?.profile ?? null
+  const organization = user?.organization ?? null
+
+  const isActive     = (href: string) => pathname === href || pathname.startsWith(href + '/')
   const isSuperAdmin = profile?.role === 'super_admin'
-  const links = isSuperAdmin ? [...NAV_LINKS, { href: '/admin', label: 'Admin' }] : NAV_LINKS
+  const links        = isSuperAdmin ? [...NAV_LINKS, { href: '/admin', label: 'Admin' }] : NAV_LINKS
 
-  // Nombre e iniciales de la organización
-  const orgName: string = (profile as any)?.organization?.name ?? profile?.full_name ?? ''
-  const orgInitials = orgName ? orgName.slice(0, 2).toUpperCase() : '?'
+  // Nombre e iniciales — org primero, luego nombre personal
+  const displayName  = organization?.name ?? profile?.full_name ?? ''
+  const initials     = displayName ? displayName.slice(0, 2).toUpperCase() : '?'
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/catalogo')
+    router.refresh()
+  }
 
   return (
     <header
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
         height: 64,
-        display: 'flex', alignItems: 'center', gap: 0, padding: '0 24px',
+        display: 'flex', alignItems: 'center', padding: '0 24px',
         backgroundColor: 'var(--bg-surface)',
         borderBottom: '1px solid var(--border)',
         backdropFilter: 'blur(12px)',
@@ -59,8 +77,7 @@ export default function Navbar() {
       <Link href="/catalogo" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', marginRight: 28 }}>
         <span style={{
           width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-          background: 'var(--accent)',
-          boxShadow: '0 0 8px var(--accent)',
+          background: 'var(--accent)', boxShadow: '0 0 8px var(--accent)',
         }} />
         <span style={{
           fontFamily: 'Syne, -apple-system, sans-serif',
@@ -71,7 +88,7 @@ export default function Navbar() {
         </span>
       </Link>
 
-      {/* Links de navegación */}
+      {/* Links */}
       <nav style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         {links.map(link => (
           <Link
@@ -91,43 +108,85 @@ export default function Navbar() {
 
       <div style={{ flex: 1 }} />
 
-      {/* Toggle de tema */}
+      {/* Tema */}
       <button
         onClick={toggle}
-        title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+        title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
         style={{
           width: 38, height: 38, borderRadius: 9, marginRight: 10,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', transition: 'all 0.18s',
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
           color: 'var(--text-secondary)',
         }}
       >
         {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
       </button>
 
-      {/* Badge de empresa (si hay sesión) */}
-      {profile && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '4px 12px 4px 4px', borderRadius: 10,
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-        }}>
+      {/* Badge empresa / usuario */}
+      {!loading && profile && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
-            width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-            background: 'linear-gradient(135deg, var(--accent), var(--accent3))',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: '#fff',
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '4px 12px 4px 4px', borderRadius: 10,
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
           }}>
-            {orgInitials}
+            {/* Avatar */}
+            <div style={{
+              width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+              background: 'linear-gradient(135deg, var(--accent), var(--accent3))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: '#fff',
+            }}>
+              {initials}
+            </div>
+            {/* Nombre */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {displayName && (
+                <span style={{
+                  fontSize: 13, fontWeight: 600, color: 'var(--text-primary)',
+                  maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {displayName}
+                </span>
+              )}
+              {profile.full_name && organization && (
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.2 }}>
+                  {profile.full_name}
+                </span>
+              )}
+            </div>
           </div>
-          {orgName && (
-            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {orgName}
-            </span>
-          )}
+
+          {/* Logout */}
+          <button
+            onClick={handleLogout}
+            title="Cerrar sesión"
+            style={{
+              width: 34, height: 34, borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', transition: 'all 0.18s',
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <LogOutIcon />
+          </button>
         </div>
+      )}
+
+      {/* Botón de login para no autenticados */}
+      {!loading && !profile && (
+        <Link
+          href="/login"
+          style={{
+            padding: '7px 16px', borderRadius: 9, fontSize: 14, fontWeight: 600,
+            textDecoration: 'none', color: '#fff',
+            background: 'var(--accent)', transition: 'all 0.18s',
+          }}
+        >
+          Iniciar sesión
+        </Link>
       )}
     </header>
   )
