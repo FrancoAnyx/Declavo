@@ -11,9 +11,11 @@ export interface CatalogProduct {
   brand: string
   category: string | null
   stock_quantity: number
+  status: string
   contact_email?: string | null
   contact_whatsapp?: string | null
-  organization_name?: string | null
+  // catalog_view devuelve org_name (NO organization_name)
+  org_name?: string | null
   organization_id?: string | null
 }
 
@@ -35,8 +37,7 @@ function WAIcon() {
 function MailIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="2" y="4" width="20" height="16" rx="2"/>
-      <polyline points="2,4 12,13 22,4"/>
+      <rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="2,4 12,13 22,4"/>
     </svg>
   )
 }
@@ -97,31 +98,16 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
   return (
     <>
       <div className="card card-hover animate-fade-in-up" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Header visual */}
+        {/* Visual header */}
         <div style={{ position: 'relative', height: 108, background: gradient, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{
-            position: 'absolute', top: '50%', left: '50%',
-            transform: 'translate(-50%,-50%)',
-            width: 72, height: 72, borderRadius: '50%',
-            background: 'var(--accent-glow)', filter: 'blur(20px)',
-          }} />
-          <span style={{ fontSize: 38, position: 'relative', filter: 'drop-shadow(0 0 12px rgba(99,102,241,.5))' }}>
-            {emoji}
-          </span>
+          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 72, height: 72, borderRadius: '50%', background: 'var(--accent-glow)', filter: 'blur(20px)' }} />
+          <span style={{ fontSize: 38, position: 'relative', filter: 'drop-shadow(0 0 12px rgba(99,102,241,.5))' }}>{emoji}</span>
           {cat && (
-            <span style={{
-              position: 'absolute', top: 10, right: 10,
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
-              background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)',
-              color: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)',
-            }}>
+            <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)' }}>
               {cat}
             </span>
           )}
-          <div style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0, height: 28,
-            background: 'linear-gradient(transparent, var(--bg-card))',
-          }} />
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 28, background: 'linear-gradient(transparent, var(--bg-card))' }} />
         </div>
 
         {/* Body */}
@@ -129,22 +115,15 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
             {product.sku}
           </div>
-          <div style={{
-            fontFamily: 'Syne, sans-serif', fontWeight: 600, fontSize: 14,
-            lineHeight: 1.35, color: 'var(--text-primary)',
-            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-          }}>
+          <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 600, fontSize: 14, lineHeight: 1.35, color: 'var(--text-primary)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
             {product.description}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span className="badge-accent">{product.brand}</span>
-            {showOrg && product.organization_name && (
-              <span style={{
-                fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 5,
-                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
-                color: 'var(--text-muted)',
-              }}>
-                {product.organization_name}
+            {/* showOrg solo para super_admin — usa org_name que es el campo real de catalog_view */}
+            {showOrg && product.org_name && (
+              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                {product.org_name}
               </span>
             )}
           </div>
@@ -157,31 +136,19 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
         </div>
 
         {/* Footer */}
-        <div style={{
-          display: 'flex', gap: 6, padding: '10px 14px',
-          borderTop: '1px solid var(--border)',
-          background: 'rgba(0,0,0,0.12)',
-        }}>
+        <div style={{ display: 'flex', gap: 6, padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.12)' }}>
           {isLoggedIn ? (
             <>
-              <button className="btn-wa" onClick={handleWA} disabled={!product.contact_whatsapp}
-                title={product.contact_whatsapp ? 'Contactar por WhatsApp' : 'Sin WhatsApp'}>
+              <button className="btn-wa" onClick={handleWA} disabled={!product.contact_whatsapp} title={product.contact_whatsapp ? 'WhatsApp' : 'Sin WhatsApp'}>
                 <WAIcon /> WA
               </button>
-              <button className="btn-email" onClick={handleEmail} disabled={!product.contact_email}
-                title={product.contact_email ? 'Contactar por email' : 'Sin email'}>
+              <button className="btn-email" onClick={handleEmail} disabled={!product.contact_email} title={product.contact_email ? 'Email' : 'Sin email'}>
                 <MailIcon /> Email
               </button>
               <button
                 onClick={() => setChatOpen(true)}
                 title="Chat interno"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  padding: '8px 10px', borderRadius: 8,
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
-                  color: 'var(--text-secondary)', transition: 'all 0.2s', flexShrink: 0,
-                }}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', color: 'var(--text-secondary)', transition: 'all 0.2s', flexShrink: 0 }}
               >
                 <ChatIcon /> Chat
               </button>
@@ -195,11 +162,7 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
       </div>
 
       {chatOpen && (
-        <ProductChat
-          productId={product.id}
-          productName={product.description}
-          onClose={() => setChatOpen(false)}
-        />
+        <ProductChat productId={product.id} productName={product.description} onClose={() => setChatOpen(false)} />
       )}
     </>
   )

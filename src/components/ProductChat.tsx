@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useProfile } from '@/context/ProfileContext'
-import type { ProductMessage } from '@/types/database'
 
 function SendIcon() {
   return (
@@ -27,71 +26,81 @@ function ChatIcon() {
   )
 }
 
+interface RawMessage {
+  id: string
+  product_id: string
+  sender_id: string
+  sender_org_id: string | null
+  body: string
+  created_at: string
+}
+interface DisplayMessage extends RawMessage {
+  sender_name: string
+  sender_org_name: string | null
+}
+
 interface Props {
   productId: string
   productName: string
   onClose: () => void
 }
 
-interface MessageWithMeta extends ProductMessage {
-  sender_name?: string | null
-  sender_org_name?: string | null
-}
-
 export default function ProductChat({ productId, productName, onClose }: Props) {
-  const supabase        = createClient()
-  const { user }        = useProfile()
-  const [messages, setMessages] = useState<MessageWithMeta[]>([])
-  const [body, setBody] = useState('')
-  const [sending, setSending] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const supabase = createClient()
+  const { user }  = useProfile()
+  const [messages, setMessages] = useState<DisplayMessage[]>([])
+  const [body, setBody]         = useState('')
+  const [sending, setSending]   = useState(false)
+  const [loading, setLoading]   = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
 
   const fetchMessages = useCallback(async () => {
-    const { data } = await supabase
+    // Paso 1: mensajes crudos
+    const { data: rawMsgs } = await supabase
       .from('product_messages')
-      .select(`
-        *,
-        profiles!product_messages_sender_id_fkey(full_name),
-        organizations!product_messages_sender_org_id_fkey(name)
-      `)
+      .select('id, product_id, sender_id, sender_org_id, body, created_at')
       .eq('product_id', productId)
       .order('created_at', { ascending: true })
 
-    if (data) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setMessages(data.map((m: any) => ({
-        ...m,
-        sender_name:     m.profiles?.full_name ?? 'Usuario',
-        sender_org_name: m.organizations?.name ?? null,
-      })))
-    }
+    if (!rawMsgs || rawMsgs.length === 0) { setMessages([]); setLoading(false); return }
+
+    // Paso 2: perfiles y orgs únicos
+    const senderIds = [...new Set((rawMsgs as RawMessage[]).map(m => m.sender_id))]
+    const orgIds    = [...new Set((rawMsgs as RawMessage[]).map(m => m.sender_org_id).filter(Boolean))] as string[]
+
+    const [{ data: profiles }, { data: orgs }] = await Promise.all([
+      supabase.from('profiles').select('id, full_name').in('id', senderIds),
+      orgIds.length > 0
+        ? supabase.from('organizations').select('id, name').in('id', orgIds)
+        : Promise.resolve({ data: [] }),
+    ])
+
+    const profileMap: Record<string, string> = {}
+    ;(profiles ?? []).forEach((p: { id: string; full_name: string | null }) => {
+      profileMap[p.id] = p.full_name ?? 'Usuario'
+    })
+    const orgMap: Record<string, string> = {}
+    ;(orgs ?? []).forEach((o: { id: string; name: string }) => { orgMap[o.id] = o.name })
+
+    setMessages((rawMsgs as RawMessage[]).map(m => ({
+      ...m,
+      sender_name:     profileMap[m.sender_id] ?? 'Usuario',
+      sender_org_name: m.sender_org_id ? (orgMap[m.sender_org_id] ?? null) : null,
+    })))
     setLoading(false)
   }, [productId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchMessages()
-
-    // Suscripción realtime
-    const channel = supabase
-      .channel(`product-chat-${productId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'product_messages',
-        filter: `product_id=eq.${productId}`,
-      }, () => {
-        fetchMessages()
-      })
+    const ch = supabase
+      .channel(`chat-${productId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'product_messages', filter: `product_id=eq.${productId}` }, () => fetchMessages())
       .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
+    return () => { supabase.removeChannel(ch) }
   }, [fetchMessages, productId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   async function handleSend() {
     if (!body.trim() || !user) return
@@ -108,21 +117,19 @@ export default function ProductChat({ productId, productName, onClose }: Props) 
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
-  function formatTime(iso: string) {
-    return new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-  }
-  function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+  const fmt     = (iso: string) => new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+  const fmtDate = (iso: string) => {
+    const d = new Date(iso)
+    return d.toDateString() === new Date().toDateString()
+      ? 'Hoy'
+      : d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
   }
 
-  // Agrupar mensajes por día
-  const grouped: { date: string; msgs: MessageWithMeta[] }[] = []
+  type Group = { date: string; msgs: DisplayMessage[] }
+  const grouped: Group[] = []
   messages.forEach(m => {
     const d = new Date(m.created_at).toDateString()
     const last = grouped[grouped.length - 1]
@@ -135,79 +142,57 @@ export default function ProductChat({ productId, productName, onClose }: Props) 
       position: 'fixed', bottom: 24, right: 24, zIndex: 300,
       width: 360, maxHeight: 520,
       background: 'var(--bg-card)', border: '1px solid var(--border)',
-      borderRadius: 18, boxShadow: 'var(--shadow-card), 0 0 40px rgba(0,0,0,0.3)',
+      borderRadius: 18, boxShadow: 'var(--shadow-card), 0 8px 40px rgba(0,0,0,0.35)',
       display: 'flex', flexDirection: 'column',
       animation: 'modalIn 0.24s cubic-bezier(0.34,1.4,0.64,1) both',
     }}>
       {/* Header */}
-      <div style={{
-        padding: '14px 16px', borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-          background: 'var(--accent-glow)', border: '1px solid var(--border-accent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--accent)',
-        }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: 'var(--accent-glow)', border: '1px solid var(--border-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
           <ChatIcon />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>Consulta sobre producto</p>
-          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {productName}
-          </p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>Chat del producto</p>
+          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{productName}</p>
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>
-          <XIcon />
-        </button>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}><XIcon /></button>
       </div>
 
       {/* Mensajes */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, minHeight: 200, maxHeight: 340 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 2, minHeight: 200, maxHeight: 340 }}>
         {loading ? (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, paddingTop: 20 }}>Cargando mensajes…</div>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, paddingTop: 24 }}>Cargando…</div>
         ) : messages.length === 0 ? (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, paddingTop: 20 }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, paddingTop: 24 }}>
+            <div style={{ fontSize: 30, marginBottom: 8 }}>💬</div>
             <p style={{ margin: 0 }}>Sé el primero en preguntar sobre este producto.</p>
           </div>
         ) : (
           grouped.map(group => (
             <div key={group.date}>
-              {/* Separador de fecha */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 6px' }}>
                 <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                  {formatDate(group.msgs[0].created_at)}
-                </span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', padding: '0 4px' }}>{fmtDate(group.msgs[0].created_at)}</span>
                 <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
               </div>
               {group.msgs.map(m => {
                 const isMe = m.sender_id === user?.id
                 return (
-                  <div key={m.id} style={{
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: isMe ? 'flex-end' : 'flex-start',
-                    marginBottom: 8,
-                  }}>
-                    {/* Remitente */}
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3, paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0 }}>
-                      {isMe ? 'Vos' : (m.sender_org_name ?? m.sender_name ?? 'Usuario')}
+                  <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 3, padding: isMe ? '0 4px 0 0' : '0 0 0 4px' }}>
+                      {isMe ? 'Vos' : (m.sender_org_name ?? m.sender_name)}
                     </span>
-                    {/* Burbuja */}
                     <div style={{
-                      maxWidth: '80%', padding: '8px 12px', borderRadius: isMe ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                      maxWidth: '82%', padding: '8px 12px',
+                      borderRadius: isMe ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
                       background: isMe ? 'var(--accent)' : 'var(--bg-base)',
                       border: isMe ? 'none' : '1px solid var(--border)',
                       color: isMe ? '#fff' : 'var(--text-primary)',
-                      fontSize: 13, lineHeight: 1.45,
+                      fontSize: 13, lineHeight: 1.5, wordBreak: 'break-word',
                     }}>
                       {m.body}
                     </div>
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, paddingLeft: isMe ? 0 : 2 }}>
-                      {formatTime(m.created_at)}
-                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, padding: isMe ? '0 4px 0 0' : '0 0 0 4px' }}>{fmt(m.created_at)}</span>
                   </div>
                 )
               })}
@@ -227,13 +212,7 @@ export default function ProductChat({ productId, productName, onClose }: Props) 
             onKeyDown={handleKeyDown}
             placeholder="Escribí tu consulta… (Enter para enviar)"
             rows={1}
-            style={{
-              flex: 1, resize: 'none', border: '1px solid var(--border)',
-              borderRadius: 10, padding: '8px 12px', fontSize: 13,
-              background: 'var(--bg-base)', color: 'var(--text-primary)',
-              outline: 'none', fontFamily: 'inherit', lineHeight: 1.4,
-              maxHeight: 80, overflowY: 'auto',
-            }}
+            style={{ flex: 1, resize: 'none', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', fontSize: 13, background: 'var(--bg-base)', color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.4, maxHeight: 80, overflowY: 'auto' }}
           />
           <button
             onClick={handleSend}
@@ -241,10 +220,10 @@ export default function ProductChat({ productId, productName, onClose }: Props) 
             style={{
               width: 36, height: 36, borderRadius: 10, flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: !body.trim() ? 'var(--bg-base)' : 'var(--accent)',
+              background: body.trim() ? 'var(--accent)' : 'var(--bg-base)',
               border: '1px solid var(--border)',
-              color: !body.trim() ? 'var(--text-muted)' : '#fff',
-              cursor: !body.trim() ? 'not-allowed' : 'pointer',
+              color: body.trim() ? '#fff' : 'var(--text-muted)',
+              cursor: body.trim() ? 'pointer' : 'not-allowed',
               transition: 'all 0.18s',
             }}
           >
