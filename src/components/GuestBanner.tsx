@@ -39,16 +39,45 @@ export default function GuestBanner() {
 
   function handleSend() {
     if (!form.email || !form.name) return
+
     const subject = encodeURIComponent('Solicitud de acceso a Declavo')
-    const bodyText = [
-      `Nombre: ${form.name}`,
-      `Email: ${form.email}`,
-      form.company ? `Empresa: ${form.company}` : '',
-      form.message ? `\nMensaje:\n${form.message}` : '',
-    ].filter(Boolean).join('\n')
+
+    // Cuerpo del email completo y profesional
+    const lines = [
+      'Estimado equipo de Declavo,',
+      '',
+      'Me dirijo a ustedes para solicitar acceso a la plataforma Declavo, el ecosistema B2B de visibilidad de stock para empresas tecnológicas.',
+      '',
+      '— DATOS DE CONTACTO —',
+      `Nombre completo : ${form.name}`,
+      `Email           : ${form.email}`,
+      form.company
+        ? `Empresa         : ${form.company}`
+        : 'Empresa         : (no especificada)',
+      '',
+    ]
+
+    if (form.message) {
+      lines.push('— SOBRE MI EMPRESA —')
+      lines.push(form.message)
+      lines.push('')
+    }
+
+    lines.push(
+      '— SOLICITUD —',
+      'Solicito que se me envíe un link de invitación al email indicado arriba para poder acceder al catálogo completo y a las funciones de contacto con los publicadores.',
+      '',
+      'Quedo a disposición ante cualquier consulta.',
+      '',
+      `Atentamente,`,
+      form.name,
+      form.company ?? '',
+    )
+
+    const bodyText = lines.filter((_, i, arr) => !(arr[i] === '' && arr[i-1] === '')).join('\n')
     window.location.href = `mailto:comercial3@anyx.com.ar?subject=${subject}&body=${encodeURIComponent(bodyText)}`
     setSent(true)
-    setTimeout(() => setShowModal(false), 2200)
+    setTimeout(() => setShowModal(false), 2500)
   }
 
   return (
@@ -75,7 +104,7 @@ export default function GuestBanner() {
             ¿Sos parte del ecosistema tech?
           </p>
           <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-            Pedile a tu reseller de confianza que se comunique con nosotros para conseguir tu acceso a la plataforma.
+            Pedile a tu reseller de confianza que se comunique con nosotros, o solicitá acceso directamente.
           </p>
         </div>
         <button
@@ -105,35 +134,41 @@ export default function GuestBanner() {
         >
           <div style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20,
-            width: '100%', maxWidth: 440, boxShadow: 'var(--shadow-card)',
+            width: '100%', maxWidth: 460, boxShadow: 'var(--shadow-card)',
             animation: 'modalIn 0.24s cubic-bezier(0.34,1.4,0.64,1) both',
           }}>
             {sent ? (
-              <div style={{ padding: '44px 32px', textAlign: 'center' }}>
-                <div style={{ width: 56, height: 56, borderRadius: '50%', margin: '0 auto 16px', background: 'var(--success-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)' }}>
+              <div style={{ padding: '48px 32px', textAlign: 'center' }}>
+                <div style={{ width: 56, height: 56, borderRadius: '50%', margin: '0 auto 18px', background: 'var(--success-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)' }}>
                   <CheckIcon />
                 </div>
-                <p style={{ fontWeight: 700, fontSize: 17, margin: '0 0 6px', color: 'var(--text-primary)' }}>¡Solicitud enviada!</p>
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Te contactaremos a la brevedad.</p>
+                <p style={{ fontWeight: 700, fontSize: 18, margin: '0 0 8px', color: 'var(--text-primary)' }}>¡Solicitud enviada!</p>
+                <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+                  Se abrió tu cliente de email con la solicitud lista.<br />Revisá que se haya enviado correctamente.
+                </p>
               </div>
             ) : (
               <>
                 <div style={{ padding: '22px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>Solicitar acceso</h2>
-                    <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>Completá el formulario y te enviamos una invitación</p>
+                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Solicitar acceso</h2>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+                      Completá el formulario y abrimos tu email con la solicitud lista para enviar.
+                    </p>
                   </div>
                   <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, marginTop: 2 }}><XIcon /></button>
                 </div>
 
                 <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div>
-                    <label style={LabelStyle}>Nombre completo *</label>
-                    <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Juan García" />
-                  </div>
-                  <div>
-                    <label style={LabelStyle}>Email *</label>
-                    <input className="input" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="tu@empresa.com" />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                    <div>
+                      <label style={LabelStyle}>Nombre completo *</label>
+                      <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Juan García" />
+                    </div>
+                    <div>
+                      <label style={LabelStyle}>Email *</label>
+                      <input className="input" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="tu@empresa.com" />
+                    </div>
                   </div>
                   <div>
                     <label style={LabelStyle}>Empresa</label>
@@ -149,6 +184,12 @@ export default function GuestBanner() {
                       rows={3}
                       style={{ resize: 'vertical', minHeight: 72 }}
                     />
+                  </div>
+                  <div style={{
+                    padding: '10px 12px', borderRadius: 10, background: 'rgba(99,102,241,0.06)',
+                    border: '1px solid var(--border-accent)', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5,
+                  }}>
+                    💡 Al hacer clic en <strong>Enviar solicitud</strong> se va a abrir tu cliente de email (Outlook, Gmail, etc.) con el mensaje ya redactado. Solo tenés que confirmarlo.
                   </div>
                 </div>
 
@@ -167,7 +208,7 @@ export default function GuestBanner() {
                       padding: '9px 20px', borderRadius: 10, fontSize: 14, fontWeight: 600,
                       cursor: !form.email || !form.name ? 'not-allowed' : 'pointer',
                       opacity: !form.email || !form.name ? 0.5 : 1,
-                      color: '#fff', background: 'var(--accent)', border: 'none',
+                      color: '#fff', background: 'var(--accent)', border: 'none', transition: 'all 0.18s',
                     }}
                   >
                     <MailIcon /> Enviar solicitud
