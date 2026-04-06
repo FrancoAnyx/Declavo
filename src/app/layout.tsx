@@ -1,25 +1,31 @@
 import type { Metadata } from 'next'
-import { DM_Sans, DM_Mono } from 'next/font/google'
+import { ThemeProvider } from '@/components/ThemeProvider'
 import { ProfileProvider } from '@/context/ProfileContext'
 import './globals.css'
- 
-const dmSans = DM_Sans({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
-const dmMono = DM_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-mono', display: 'swap' })
- 
+
 export const metadata: Metadata = {
-  title: 'Declavo — Stock tech entre colegas',
-  description: 'Plataforma de visibilidad de stock para empresas tecnológicas',
+  title: 'Declavo — Catálogo B2B de Tecnología',
+  description: 'Plataforma privada de visibilidad de stock entre empresas tecnológicas.',
 }
- 
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={`${dmSans.variable} ${dmMono.variable}`}>
-      <body className="bg-brand-50 text-brand-900 font-sans antialiased">
-        <ProfileProvider>
-          {children}
-        </ProfileProvider>
+    <html lang="es" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
+        <ThemeProvider>
+          <ProfileProvider>
+            {children}
+          </ProfileProvider>
+        </ThemeProvider>
       </body>
     </html>
   )
 }
- 
