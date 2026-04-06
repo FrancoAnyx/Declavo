@@ -1,6 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import { useProfile } from '@/context/ProfileContext'
+import ProductChat from '@/components/ProductChat'
 
 export interface CatalogProduct {
   id: string
@@ -15,7 +17,6 @@ export interface CatalogProduct {
   organization_id?: string | null
 }
 
-/* ── Disponibilidad ── */
 function AvailBadge({ qty }: { qty: number }) {
   const q = Number(qty)
   if (q > 5)  return <span className="badge-success">● Disponible</span>
@@ -23,7 +24,6 @@ function AvailBadge({ qty }: { qty: number }) {
   return             <span className="badge-danger">● Sin stock</span>
 }
 
-/* ── Íconos ── */
 function WAIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
@@ -34,24 +34,36 @@ function WAIcon() {
 }
 function MailIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <rect x="2" y="4" width="20" height="16" rx="2"/>
       <polyline points="2,4 12,13 22,4"/>
     </svg>
   )
 }
+function ChatIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+  )
+}
 
-/* ── Gradientes por categoría ── */
 const CAT_GRADIENT: Record<string, string> = {
   Networking:     'linear-gradient(140deg, #1a2040 0%, #111528 100%)',
   Cómputo:        'linear-gradient(140deg, #1a2840 0%, #0f1a28 100%)',
+  Notebooks:      'linear-gradient(140deg, #1a2840 0%, #0f1a28 100%)',
   Periféricos:    'linear-gradient(140deg, #1e1a40 0%, #130f28 100%)',
   Seguridad:      'linear-gradient(140deg, #221a40 0%, #160f28 100%)',
   Almacenamiento: 'linear-gradient(140deg, #1a3040 0%, #0f1e28 100%)',
+  Monitores:      'linear-gradient(140deg, #1a2533 0%, #0e1820 100%)',
+  Impresoras:     'linear-gradient(140deg, #251a1a 0%, #180f0f 100%)',
+  Servidores:     'linear-gradient(140deg, #1a2a1a 0%, #0f1c0f 100%)',
+  Tablets:        'linear-gradient(140deg, #20201a 0%, #14140f 100%)',
 }
 const CAT_EMOJI: Record<string, string> = {
-  Networking: '🌐', Cómputo: '🖥', Periféricos: '🖱',
-  Seguridad: '🔒', Almacenamiento: '💾',
+  Networking: '🌐', Cómputo: '🖥', Notebooks: '💻', Periféricos: '🖱',
+  Seguridad: '🔒', Almacenamiento: '💾', Monitores: '🖥', Impresoras: '🖨',
+  Servidores: '🗄', Tablets: '📱',
 }
 
 interface ProductCardProps {
@@ -60,16 +72,15 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product, showOrg }: ProductCardProps) {
-  const { profile } = useProfile()
-  const isLoggedIn = !!profile
+  const { user }         = useProfile()
+  const isLoggedIn       = !!user?.profile
+  const [chatOpen, setChatOpen] = useState(false)
 
   const handleWA = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!isLoggedIn || !product.contact_whatsapp) return
     const num = product.contact_whatsapp.replace(/\D/g, '')
-    const msg = encodeURIComponent(
-      `Hola, vi "${product.description}" en Declavo y me interesa. ¿Podemos hablar?`
-    )
+    const msg = encodeURIComponent(`Hola, vi "${product.description}" en Declavo y me interesa. ¿Podemos hablar?`)
     window.open(`https://wa.me/${num}?text=${msg}`, '_blank')
   }
 
@@ -79,103 +90,117 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
     window.location.href = `mailto:${product.contact_email}?subject=Consulta Declavo: ${product.sku}&body=Hola, vi "${product.description}" en Declavo y me interesa.`
   }
 
-  const cat = product.category ?? ''
+  const cat      = product.category ?? ''
   const gradient = CAT_GRADIENT[cat] ?? 'linear-gradient(140deg, #1a1d35 0%, #0f1120 100%)'
-  const emoji = CAT_EMOJI[cat] ?? '📦'
+  const emoji    = CAT_EMOJI[cat]    ?? '📦'
 
   return (
-    <div
-      className="card card-hover animate-fade-in-up"
-      style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-    >
-      {/* Header visual */}
-      <div style={{ position: 'relative', height: 108, background: gradient, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {/* Glow */}
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%',
-          transform: 'translate(-50%,-50%)',
-          width: 72, height: 72, borderRadius: '50%',
-          background: 'var(--accent-glow)', filter: 'blur(20px)',
-        }} />
-        <span style={{ fontSize: 38, position: 'relative', filter: 'drop-shadow(0 0 12px rgba(99,102,241,.5))' }}>
-          {emoji}
-        </span>
-        {cat && (
-          <span style={{
-            position: 'absolute', top: 10, right: 10,
-            fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
-            background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)',
-            color: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)',
-          }}>
-            {cat}
+    <>
+      <div className="card card-hover animate-fade-in-up" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Header visual */}
+        <div style={{ position: 'relative', height: 108, background: gradient, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{
+            position: 'absolute', top: '50%', left: '50%',
+            transform: 'translate(-50%,-50%)',
+            width: 72, height: 72, borderRadius: '50%',
+            background: 'var(--accent-glow)', filter: 'blur(20px)',
+          }} />
+          <span style={{ fontSize: 38, position: 'relative', filter: 'drop-shadow(0 0 12px rgba(99,102,241,.5))' }}>
+            {emoji}
           </span>
-        )}
-        {/* Fade al cuerpo */}
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0, height: 28,
-          background: 'linear-gradient(transparent, var(--bg-card))',
-        }} />
-      </div>
-
-      {/* Body */}
-      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
-        {/* SKU */}
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-          {product.sku}
-        </div>
-        {/* Descripción */}
-        <div style={{
-          fontFamily: 'Syne, sans-serif', fontWeight: 600, fontSize: 14,
-          lineHeight: 1.35, color: 'var(--text-primary)',
-          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-        }}>
-          {product.description}
-        </div>
-        {/* Marca + empresa */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span className="badge-accent">{product.brand}</span>
-          {showOrg && product.organization_name && (
+          {cat && (
             <span style={{
-              fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 5,
-              background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
-              color: 'var(--text-muted)',
+              position: 'absolute', top: 10, right: 10,
+              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+              background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)',
+              color: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)',
             }}>
-              {product.organization_name}
+              {cat}
             </span>
           )}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0, height: 28,
+            background: 'linear-gradient(transparent, var(--bg-card))',
+          }} />
         </div>
-        {/* Stock y disponibilidad */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: 4 }}>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Stock: <strong style={{ color: 'var(--text-secondary)' }}>{product.stock_quantity}</strong>
-          </span>
-          <AvailBadge qty={Number(product.stock_quantity)} />
+
+        {/* Body */}
+        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+            {product.sku}
+          </div>
+          <div style={{
+            fontFamily: 'Syne, sans-serif', fontWeight: 600, fontSize: 14,
+            lineHeight: 1.35, color: 'var(--text-primary)',
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          }}>
+            {product.description}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span className="badge-accent">{product.brand}</span>
+            {showOrg && product.organization_name && (
+              <span style={{
+                fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 5,
+                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+                color: 'var(--text-muted)',
+              }}>
+                {product.organization_name}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Stock: <strong style={{ color: 'var(--text-secondary)' }}>{product.stock_quantity}</strong>
+            </span>
+            <AvailBadge qty={Number(product.stock_quantity)} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          display: 'flex', gap: 6, padding: '10px 14px',
+          borderTop: '1px solid var(--border)',
+          background: 'rgba(0,0,0,0.12)',
+        }}>
+          {isLoggedIn ? (
+            <>
+              <button className="btn-wa" onClick={handleWA} disabled={!product.contact_whatsapp}
+                title={product.contact_whatsapp ? 'Contactar por WhatsApp' : 'Sin WhatsApp'}>
+                <WAIcon /> WA
+              </button>
+              <button className="btn-email" onClick={handleEmail} disabled={!product.contact_email}
+                title={product.contact_email ? 'Contactar por email' : 'Sin email'}>
+                <MailIcon /> Email
+              </button>
+              <button
+                onClick={() => setChatOpen(true)}
+                title="Chat interno"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '8px 10px', borderRadius: 8,
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+                  color: 'var(--text-secondary)', transition: 'all 0.2s', flexShrink: 0,
+                }}
+              >
+                <ChatIcon /> Chat
+              </button>
+            </>
+          ) : (
+            <p style={{ width: '100%', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+              <a href="/login">Iniciá sesión</a> para ver contacto
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Footer - contacto */}
-      <div style={{
-        display: 'flex', gap: 8, padding: '10px 14px',
-        borderTop: '1px solid var(--border)',
-        background: 'rgba(0,0,0,0.12)',
-      }}>
-        {isLoggedIn ? (
-          <>
-            <button className="btn-wa" onClick={handleWA} disabled={!product.contact_whatsapp}
-              title={product.contact_whatsapp ? 'Contactar por WhatsApp' : 'Sin WhatsApp'}>
-              <WAIcon /> WhatsApp
-            </button>
-            <button className="btn-email" onClick={handleEmail} disabled={!product.contact_email}
-              title={product.contact_email ? 'Contactar por email' : 'Sin email'}>
-              <MailIcon /> Email
-            </button>
-          </>
-        ) : (
-          <p style={{ width: '100%', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-            <a href="/login">Iniciá sesión</a> para ver contacto
-          </p>
-        )}
-      </div>
-    </div>
+      {chatOpen && (
+        <ProductChat
+          productId={product.id}
+          productName={product.description}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
+    </>
   )
 }
