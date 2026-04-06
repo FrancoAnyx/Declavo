@@ -9,20 +9,21 @@ export interface CatalogProduct {
   brand: string
   category: string | null
   stock_quantity: number
-  // Viene de catalog_view / search_catalog()
   contact_email?: string | null
   contact_whatsapp?: string | null
-  // Solo visible para super_admin
   organization_name?: string | null
+  organization_id?: string | null
 }
 
+/* ── Disponibilidad ── */
 function AvailBadge({ qty }: { qty: number }) {
-  if (qty > 5)  return <span className="badge-success"><span>●</span> Disponible</span>
-  if (qty > 0)  return <span className="badge-warning"><span>●</span> Stock bajo</span>
-  return             <span className="badge-danger"><span>●</span> Sin stock</span>
+  const q = Number(qty)
+  if (q > 5)  return <span className="badge-success">● Disponible</span>
+  if (q > 0)  return <span className="badge-warning">● Stock bajo</span>
+  return             <span className="badge-danger">● Sin stock</span>
 }
 
-// Ícono WhatsApp
+/* ── Íconos ── */
 function WAIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
@@ -31,8 +32,6 @@ function WAIcon() {
     </svg>
   )
 }
-
-// Ícono Email
 function MailIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -42,26 +41,22 @@ function MailIcon() {
   )
 }
 
-// Gradiente de imagen por categoría
-const CATEGORY_GRADIENTS: Record<string, string> = {
-  Networking:     'linear-gradient(135deg, #1a1d35, #0f1525)',
-  Cómputo:        'linear-gradient(135deg, #1a2535, #0f1520)',
-  Periféricos:    'linear-gradient(135deg, #1a1a35, #100f25)',
-  Seguridad:      'linear-gradient(135deg, #1d1a35, #120f25)',
-  Almacenamiento: 'linear-gradient(135deg, #1a2835, #0f1828)',
+/* ── Gradientes por categoría ── */
+const CAT_GRADIENT: Record<string, string> = {
+  Networking:     'linear-gradient(140deg, #1a2040 0%, #111528 100%)',
+  Cómputo:        'linear-gradient(140deg, #1a2840 0%, #0f1a28 100%)',
+  Periféricos:    'linear-gradient(140deg, #1e1a40 0%, #130f28 100%)',
+  Seguridad:      'linear-gradient(140deg, #221a40 0%, #160f28 100%)',
+  Almacenamiento: 'linear-gradient(140deg, #1a3040 0%, #0f1e28 100%)',
 }
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  Networking:     '🌐',
-  Cómputo:        '🖥',
-  Periféricos:    '🖱',
-  Seguridad:      '🔒',
-  Almacenamiento: '💾',
+const CAT_EMOJI: Record<string, string> = {
+  Networking: '🌐', Cómputo: '🖥', Periféricos: '🖱',
+  Seguridad: '🔒', Almacenamiento: '💾',
 }
 
 interface ProductCardProps {
   product: CatalogProduct
-  showOrg?: boolean // solo para super_admin
+  showOrg?: boolean
 }
 
 export default function ProductCard({ product, showOrg }: ProductCardProps) {
@@ -84,124 +79,100 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
     window.location.href = `mailto:${product.contact_email}?subject=Consulta Declavo: ${product.sku}&body=Hola, vi "${product.description}" en Declavo y me interesa.`
   }
 
-  const gradient = CATEGORY_GRADIENTS[product.category ?? ''] ?? 'linear-gradient(135deg, #1a1d35, #0f1120)'
-  const emoji = CATEGORY_EMOJI[product.category ?? ''] ?? '📦'
+  const cat = product.category ?? ''
+  const gradient = CAT_GRADIENT[cat] ?? 'linear-gradient(140deg, #1a1d35 0%, #0f1120 100%)'
+  const emoji = CAT_EMOJI[cat] ?? '📦'
 
   return (
-    <div className="card card-hover flex flex-col animate-fade-in-up">
+    <div
+      className="card card-hover animate-fade-in-up"
+      style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+    >
       {/* Header visual */}
-      <div
-        className="relative flex items-center justify-center"
-        style={{ height: 110, background: gradient, overflow: 'hidden' }}
-      >
-        {/* Glow orb */}
-        <div
-          style={{
-            position: 'absolute', top: '50%', left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: 80, height: 80, borderRadius: '50%',
-            background: 'var(--accent-glow)',
-            filter: 'blur(24px)',
-          }}
-        />
-        <span style={{ fontSize: 40, filter: 'drop-shadow(0 0 16px rgba(99,102,241,.6))', position: 'relative' }}>
+      <div style={{ position: 'relative', height: 108, background: gradient, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {/* Glow */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%,-50%)',
+          width: 72, height: 72, borderRadius: '50%',
+          background: 'var(--accent-glow)', filter: 'blur(20px)',
+        }} />
+        <span style={{ fontSize: 38, position: 'relative', filter: 'drop-shadow(0 0 12px rgba(99,102,241,.5))' }}>
           {emoji}
         </span>
-        {/* Categoría badge */}
-        {product.category && (
-          <span
-            className="absolute top-2.5 right-2.5 text-xs font-bold px-2 py-0.5 rounded-lg"
-            style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border)',
-              color: 'var(--accent)',
-            }}
-          >
-            {product.category}
+        {cat && (
+          <span style={{
+            position: 'absolute', top: 10, right: 10,
+            fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+            background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)',
+            color: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)',
+          }}>
+            {cat}
           </span>
         )}
-        {/* Fade bottom */}
-        <div
-          style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0, height: 32,
-            background: 'linear-gradient(to bottom, transparent, var(--bg-card))',
-          }}
-        />
+        {/* Fade al cuerpo */}
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: 28,
+          background: 'linear-gradient(transparent, var(--bg-card))',
+        }} />
       </div>
 
       {/* Body */}
-      <div className="flex flex-col gap-2 p-4 flex-1">
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
         {/* SKU */}
-        <div
-          className="text-xs font-bold tracking-wider uppercase"
-          style={{ color: 'var(--text-muted)' }}
-        >
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
           {product.sku}
         </div>
-
         {/* Descripción */}
-        <div
-          className="font-display font-semibold text-sm leading-snug line-clamp-2"
-          style={{ color: 'var(--text-primary)' }}
-        >
+        <div style={{
+          fontFamily: 'Syne, sans-serif', fontWeight: 600, fontSize: 14,
+          lineHeight: 1.35, color: 'var(--text-primary)',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+        }}>
           {product.description}
         </div>
-
         {/* Marca + empresa */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span className="badge-accent">{product.brand}</span>
           {showOrg && product.organization_name && (
-            <span
-              className="text-xs font-medium px-2 py-0.5 rounded-md"
-              style={{
-                background: 'var(--bg-base)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-muted)',
-              }}
-            >
+            <span style={{
+              fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 5,
+              background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+              color: 'var(--text-muted)',
+            }}>
               {product.organization_name}
             </span>
           )}
         </div>
-
-        {/* Stock */}
-        <div className="flex items-center justify-between mt-auto pt-1">
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Stock: <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-              {product.stock_quantity}
-            </span>
+        {/* Stock y disponibilidad */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: 4 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Stock: <strong style={{ color: 'var(--text-secondary)' }}>{product.stock_quantity}</strong>
           </span>
           <AvailBadge qty={Number(product.stock_quantity)} />
         </div>
       </div>
 
       {/* Footer - contacto */}
-      <div
-        className="flex gap-2 px-4 py-3"
-        style={{ borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.08)' }}
-      >
+      <div style={{
+        display: 'flex', gap: 8, padding: '10px 14px',
+        borderTop: '1px solid var(--border)',
+        background: 'rgba(0,0,0,0.12)',
+      }}>
         {isLoggedIn ? (
           <>
-            <button
-              className="btn-wa"
-              onClick={handleWA}
-              disabled={!product.contact_whatsapp}
-              title={!product.contact_whatsapp ? 'Sin WhatsApp configurado' : ''}
-            >
+            <button className="btn-wa" onClick={handleWA} disabled={!product.contact_whatsapp}
+              title={product.contact_whatsapp ? 'Contactar por WhatsApp' : 'Sin WhatsApp'}>
               <WAIcon /> WhatsApp
             </button>
-            <button
-              className="btn-email"
-              onClick={handleEmail}
-              disabled={!product.contact_email}
-              title={!product.contact_email ? 'Sin email configurado' : ''}
-            >
+            <button className="btn-email" onClick={handleEmail} disabled={!product.contact_email}
+              title={product.contact_email ? 'Contactar por email' : 'Sin email'}>
               <MailIcon /> Email
             </button>
           </>
         ) : (
-          <p className="w-full text-center text-xs" style={{ color: 'var(--text-muted)' }}>
-            <a href="/login" style={{ color: 'var(--accent)' }}>Iniciá sesión</a> para contactar
+          <p style={{ width: '100%', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+            <a href="/login">Iniciá sesión</a> para ver contacto
           </p>
         )}
       </div>

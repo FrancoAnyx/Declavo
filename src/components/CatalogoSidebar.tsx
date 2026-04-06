@@ -1,59 +1,112 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useState } from 'react'
 
 const SIDEBAR_W = 240
 
-// Ícono SVG genérico
-function Icon({ d }: { d: string }) {
+/* ── Íconos ── */
+function ChevronDown({ open }: { open: boolean }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d={d} />
+    <svg
+      width="12" height="12" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="2.5"
+      style={{
+        flexShrink: 0,
+        color: 'var(--text-muted)',
+        transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
+        transition: 'transform 0.2s ease',
+      }}
+    >
+      <polyline points="6 9 12 15 18 9" />
     </svg>
   )
 }
 
-interface SidebarItemProps {
+function GridIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+}
+function BoxIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+}
+
+/* ── SidebarItem ── */
+interface ItemProps {
   href?: string
   label: string
   icon?: React.ReactNode
-  badge?: number
+  badge?: number | string
   active?: boolean
   onClick?: () => void
+  indent?: boolean
 }
 
-function SidebarItem({ href, label, icon, badge, active, onClick }: SidebarItemProps) {
-  const content = (
-    <span
-      className={`sidebar-item ${active ? 'active' : ''}`}
-      onClick={onClick}
-    >
-      {icon && <span className="flex-shrink-0">{icon}</span>}
-      <span className="flex-1 truncate">{label}</span>
+function SidebarItem({ href, label, icon, badge, active, onClick, indent }: ItemProps) {
+  const cls = `sidebar-item${active ? ' active' : ''}`
+  const style: React.CSSProperties = indent ? { paddingLeft: 28 } : {}
+
+  const inner = (
+    <>
+      {icon && <span style={{ flexShrink: 0, display: 'flex' }}>{icon}</span>}
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
       {badge != null && (
-        <span
-          className="text-xs font-bold px-1.5 py-0.5 rounded-full"
-          style={{ background: 'var(--accent)', color: '#fff', fontSize: 10 }}
-        >
-          {badge}
-        </span>
+        <span style={{
+          fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20,
+          background: 'var(--accent)', color: '#fff', flexShrink: 0,
+        }}>{badge}</span>
       )}
-    </span>
+    </>
   )
 
-  if (href) return <Link href={href} className="no-underline block">{content}</Link>
-  return content
+  if (href) {
+    return (
+      <Link href={href} className={cls} style={style}>
+        {inner}
+      </Link>
+    )
+  }
+  return (
+    <button type="button" className={cls} style={style} onClick={onClick}>
+      {inner}
+    </button>
+  )
 }
 
-function SidebarLabel({ children }: { children: React.ReactNode }) {
+/* ── Sección con label + botón colapso ── */
+function SidebarSection({
+  title,
+  children,
+  defaultOpen = true,
+}: {
+  title: string
+  children: React.ReactNode
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
   return (
-    <span
-      className="block px-3 pt-2 pb-1 text-xs font-bold tracking-widest uppercase"
-      style={{ color: 'var(--text-muted)' }}
-    >
-      {children}
-    </span>
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          width: '100%', padding: '7px 12px 4px',
+          background: 'none', border: 'none', cursor: 'pointer',
+          gap: 6,
+        }}
+      >
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: '1px',
+          textTransform: 'uppercase', color: 'var(--text-muted)',
+        }}>
+          {title}
+        </span>
+        <ChevronDown open={open} />
+      </button>
+      {open && <div>{children}</div>}
+    </div>
   )
 }
 
@@ -61,7 +114,8 @@ function Divider() {
   return <div style={{ height: 1, background: 'var(--border)', margin: '6px 12px' }} />
 }
 
-interface CatalogoSidebarProps {
+/* ── Props ── */
+export interface CatalogoSidebarProps {
   brands?: string[]
   categories?: string[]
   selectedBrand?: string | null
@@ -72,6 +126,7 @@ interface CatalogoSidebarProps {
   onAvail?: (a: string | null) => void
 }
 
+/* ── Componente principal ── */
 export default function CatalogoSidebar({
   brands = [],
   categories = [],
@@ -86,56 +141,42 @@ export default function CatalogoSidebar({
 
   return (
     <aside
-      className="fixed bottom-0 overflow-y-auto overflow-x-hidden flex flex-col gap-1"
       style={{
-        width: SIDEBAR_W,
-        top: 64,
-        left: 0,
+        position: 'fixed', top: 64, bottom: 0, left: 0,
+        width: SIDEBAR_W, zIndex: 40,
         background: 'var(--bg-sidebar)',
         borderRight: '1px solid var(--border)',
-        padding: '16px 10px',
-        zIndex: 40,
-        transition: 'background 0.3s, border-color 0.3s',
+        padding: '12px 8px 20px',
+        overflowY: 'auto', overflowX: 'hidden',
+        display: 'flex', flexDirection: 'column', gap: 2,
+        transition: 'background 0.25s, border-color 0.25s',
       }}
     >
-      {/* Navegación principal */}
-      <div className="mb-1">
-        <SidebarLabel>Principal</SidebarLabel>
+      {/* Navegación */}
+      <SidebarSection title="Menú" defaultOpen={true}>
         <SidebarItem
           href="/catalogo"
           label="Catálogo General"
           active={pathname === '/catalogo'}
-          icon={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-              <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-            </svg>
-          }
+          icon={<GridIcon />}
         />
         <SidebarItem
           href="/mis-productos"
           label="Mis Productos"
           active={pathname === '/mis-productos'}
-          icon={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
-            </svg>
-          }
+          icon={<BoxIcon />}
         />
-      </div>
+      </SidebarSection>
 
-      {/* Filtro Marca — siempre visible y expandido */}
+      {/* Filtro Marcas — colapsable, abierto por defecto */}
       {brands.length > 0 && (
         <>
           <Divider />
-          <div className="mb-1">
-            <SidebarLabel>Marca</SidebarLabel>
+          <SidebarSection title="Marca" defaultOpen={true}>
             <SidebarItem
-              label="Todas"
+              label="Todas las marcas"
               active={!selectedBrand}
               onClick={() => onBrand?.(null)}
-              icon={<span style={{ color: 'var(--text-muted)', fontSize: 14 }}>○</span>}
             />
             {brands.map(b => (
               <SidebarItem
@@ -143,18 +184,18 @@ export default function CatalogoSidebar({
                 label={b}
                 active={selectedBrand === b}
                 onClick={() => onBrand?.(selectedBrand === b ? null : b)}
-                icon={<span style={{ color: 'var(--text-muted)', fontSize: 14 }}>◉</span>}
+                indent
               />
             ))}
-          </div>
+          </SidebarSection>
         </>
       )}
 
-      {/* Filtro Categoría — colapsable */}
+      {/* Filtro Categorías — colapsable, cerrado por defecto */}
       {categories.length > 0 && (
         <>
           <Divider />
-          <CollapsibleSection title="Categoría" defaultOpen={false}>
+          <SidebarSection title="Categoría" defaultOpen={false}>
             <SidebarItem
               label="Todas"
               active={!selectedCategory}
@@ -166,77 +207,30 @@ export default function CatalogoSidebar({
                 label={c}
                 active={selectedCategory === c}
                 onClick={() => onCategory?.(selectedCategory === c ? null : c)}
+                indent
               />
             ))}
-          </CollapsibleSection>
+          </SidebarSection>
         </>
       )}
 
-      {/* Filtro Disponibilidad */}
-      <>
-        <Divider />
-        <CollapsibleSection title="Disponibilidad" defaultOpen={false}>
-          {[
-            { val: null,        label: 'Todos' },
-            { val: 'instock',   label: 'Con stock' },
-            { val: 'lowstock',  label: 'Stock bajo' },
-            { val: 'nostock',   label: 'Sin stock' },
-          ].map(opt => (
-            <SidebarItem
-              key={String(opt.val)}
-              label={opt.label}
-              active={selectedAvail === opt.val}
-              onClick={() => onAvail?.(opt.val)}
-            />
-          ))}
-        </CollapsibleSection>
-      </>
+      {/* Filtro Disponibilidad — cerrado por defecto */}
+      <Divider />
+      <SidebarSection title="Disponibilidad" defaultOpen={false}>
+        {[
+          { val: null,        label: 'Todos' },
+          { val: 'instock',   label: 'Con stock' },
+          { val: 'lowstock',  label: 'Stock bajo' },
+          { val: 'nostock',   label: 'Sin stock' },
+        ].map(opt => (
+          <SidebarItem
+            key={String(opt.val)}
+            label={opt.label}
+            active={selectedAvail === opt.val}
+            onClick={() => onAvail?.(opt.val)}
+          />
+        ))}
+      </SidebarSection>
     </aside>
   )
 }
-
-// Sección colapsable
-function CollapsibleSection({
-  title,
-  children,
-  defaultOpen = true,
-}: {
-  title: string
-  children: React.ReactNode
-  defaultOpen?: boolean
-}) {
-  // Usamos estado local; como es client component está bien
-  const [open, setOpen] = useState(defaultOpen)
-
-  return (
-    <div className="mb-1">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-3 pt-2 pb-1 transition-colors duration-200"
-        style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-      >
-        <span
-          className="text-xs font-bold tracking-widest uppercase"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          {title}
-        </span>
-        <svg
-          width="12" height="12" viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" strokeWidth="2"
-          style={{
-            color: 'var(--text-muted)',
-            transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
-            transition: 'transform 0.2s',
-          }}
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      {open && <div>{children}</div>}
-    </div>
-  )
-}
-
-// useState import
-import { useState } from 'react'
