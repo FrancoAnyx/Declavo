@@ -67,7 +67,127 @@ function generateTemplateXlsx(): Blob {
 }
 
 function downloadTemplate() {
-  const blob=generateTemplateXlsx(),url=URL.createObjectURL(blob),a=document.createElement('a')
+  const blob=/**
+ * Genera un archivo .xlsx con formato visual mejorado:
+ * - Encabezados con fondo azul/indigo y texto blanco
+ * - Anchos de columna ajustados
+ * - Fila de ejemplo completa
+ * - Fila de instrucciones
+ * 
+ * Reemplazar la función generateTemplateXlsx en src/app/mis-productos/page.tsx
+ */
+
+function generateTemplateXlsx(): Blob {
+  const headers = ['SKU', 'Descripcion', 'Marca', 'Categoria', 'Stock', 'Precio', 'WhatsApp', 'Email']
+  const example = ['SKU-HP-001', 'HP EliteBook 840 G9 Core i7 16GB 512GB', 'HP', 'Notebooks', '5', '1500000', '+549 11 0000-0000', 'ventas@empresa.com']
+  const colWidths = [15, 45, 15, 18, 8, 12, 20, 28] // en caracteres aprox.
+
+  /* ── Shared strings ── */
+  const allStrings = [...headers, ...example,
+    'Completá cada columna. SKU + Descripcion + Marca son obligatorios.',
+    'Las columnas Precio, WhatsApp y Email son opcionales.',
+    'Instrucciones',
+  ]
+  const ssXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${allStrings.length}" uniqueCount="${allStrings.length}">${
+    allStrings.map(s => `<si><t xml:space="preserve">${s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</t></si>`).join('')
+  }</sst>`
+
+  const si = (s: string) => allStrings.indexOf(s)
+  const col = (i: number) => String.fromCharCode(65 + i)
+
+  /* ── Styles: font bold, fill indigo, alignment ── */
+  const xmlStyles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="4">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><sz val="11"/><b/><name val="Calibri"/><color rgb="FFFFFFFF"/></font>
+    <font><sz val="11"/><name val="Calibri"/><color rgb="FF374151"/></font>
+    <font><sz val="10"/><i/><name val="Calibri"/><color rgb="FF6B7280"/></font>
+  </fonts>
+  <fills count="4">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF4F46E5"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF8F9FF"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border><left style="thin"><color rgb="FFE5E7EB"/></left><right style="thin"><color rgb="FFE5E7EB"/></right><top style="thin"><color rgb="FFE5E7EB"/></top><bottom style="thin"><color rgb="FFE5E7EB"/></bottom><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="5">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="center"/></xf>
+  </cellXfs>
+</styleSheet>`
+
+  /* ── Columnas con ancho ── */
+  const colsXml = `<cols>${colWidths.map((w, i) => `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols>`
+
+  /* ── Hoja ── */
+  const xmlSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetFormatPr defaultRowHeight="18" customHeight="1"/>
+  ${colsXml}
+  <sheetData>
+    <row r="1" ht="22" customHeight="1">
+      ${headers.map((h, i) => `<c r="${col(i)}1" t="s" s="1"><v>${si(h)}</v></c>`).join('')}
+    </row>
+    <row r="2" ht="18">
+      ${example.map((v, i) => `<c r="${col(i)}2" t="s" s="2"><v>${si(v)}</v></c>`).join('')}
+    </row>
+    <row r="3" ht="16">
+      <c r="A3" t="s" s="3"><v>${si('Completá cada columna. SKU + Descripcion + Marca son obligatorios.')}</v></c>
+    </row>
+    <row r="4" ht="16">
+      <c r="A4" t="s" s="3"><v>${si('Las columnas Precio, WhatsApp y Email son opcionales.')}</v></c>
+    </row>
+  </sheetData>
+  <pageSetup orientation="landscape"/>
+</worksheet>`
+
+  const xmlWorkbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Productos Declavo" sheetId="1" r:id="rId1"/></sheets></workbook>`
+  const xmlRelWorkbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`
+  const xmlRelRoot = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`
+  const xmlContentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`
+
+  function strToBytes(s: string) { return new TextEncoder().encode(s) }
+  function u16le(n: number) { return new Uint8Array([n & 0xff, (n >> 8) & 0xff]) }
+  function u32le(n: number) { return new Uint8Array([n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]) }
+  function crc32(data: Uint8Array) {
+    const table = new Uint32Array(256)
+    for (let i = 0; i < 256; i++) { let k = i; for (let j = 0; j < 8; j++) k = k & 1 ? (k >>> 1) ^ 0xedb88320 : k >>> 1; table[i] = k >>> 0 }
+    let c = 0xffffffff; for (const b of data) c = (c >>> 8) ^ table[(c ^ b) & 0xff]; return (~c) >>> 0
+  }
+  function concat(arrs: Uint8Array[]) {
+    const total = arrs.reduce((s, a) => s + a.length, 0); const out = new Uint8Array(total); let pos = 0
+    for (const a of arrs) { out.set(a, pos); pos += a.length } return out
+  }
+
+  const files = [
+    { name: '[Content_Types].xml',           data: strToBytes(xmlContentTypes) },
+    { name: '_rels/.rels',                   data: strToBytes(xmlRelRoot) },
+    { name: 'xl/workbook.xml',               data: strToBytes(xmlWorkbook) },
+    { name: 'xl/_rels/workbook.xml.rels',    data: strToBytes(xmlRelWorkbook) },
+    { name: 'xl/sharedStrings.xml',          data: strToBytes(ssXml) },
+    { name: 'xl/styles.xml',                 data: strToBytes(xmlStyles) },
+    { name: 'xl/worksheets/sheet1.xml',      data: strToBytes(xmlSheet) },
+  ]
+
+  const parts: Uint8Array[] = [], cdEntries: Uint8Array[] = []; let offset = 0
+  for (const f of files) {
+    const nb = strToBytes(f.name), crc = crc32(f.data)
+    const lh = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ...u32le(crc), ...u32le(f.data.length), ...u32le(f.data.length), ...u16le(nb.length), 0x00, 0x00, ...nb])
+    const cd = new Uint8Array([0x50, 0x4b, 0x01, 0x02, 0x14, 0x00, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ...u32le(crc), ...u32le(f.data.length), ...u32le(f.data.length), ...u16le(nb.length), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ...u32le(offset), ...nb])
+    parts.push(lh, f.data); cdEntries.push(cd); offset += lh.length + f.data.length
+  }
+  const cdData = concat(cdEntries)
+  const eocd = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, ...u16le(files.length), ...u16le(files.length), ...u32le(cdData.length), ...u32le(offset), 0x00, 0x00])
+  return new Blob([concat([...parts, cdData, eocd])], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+}Xlsx(),url=URL.createObjectURL(blob),a=document.createElement('a')
   a.href=url;a.download='plantilla-declavo.xlsx';a.click();URL.revokeObjectURL(url)
 }
 
