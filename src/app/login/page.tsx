@@ -2,91 +2,135 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { LayoutGrid, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
-  const [email, setEmail]     = useState('')
+  const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError]     = useState('')
-  const [loading, setLoading] = useState(false)
-  const router = useRouter()
+  const [error, setError]       = useState('')
+  const [loading, setLoading]   = useState(false)
+  const router   = useRouter()
   const supabase = createClient()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setLoading(true)
-
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-
     if (error) {
       setError('Email o contraseña incorrectos.')
       setLoading(false)
       return
     }
-
     router.push('/catalogo')
     router.refresh()
   }
 
   return (
-    <div className="min-h-screen bg-brand-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--bg-base)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 16,
+    }}>
+      <div style={{ width: '100%', maxWidth: 380 }}>
+
         {/* Logo */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-brand-900 rounded-lg flex items-center justify-center">
-            <LayoutGrid size={16} className="text-white" />
-          </div>
-          <span className="text-xl font-medium text-brand-900">Declavo</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 32 }}>
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 12px var(--accent)', flexShrink: 0 }} />
+          <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 26, letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>
+            Declavo
+          </span>
         </div>
 
-        <div className="card p-6">
-          <h1 className="text-[17px] font-medium text-brand-900 mb-1">Iniciar sesión</h1>
-          <p className="text-sm text-brand-400 mb-6">Acceso exclusivo por invitación</p>
+        {/* Card */}
+        <div className="card" style={{ padding: 28 }}>
+          <h1 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>
+            Iniciar sesión
+          </h1>
+          <p style={{ margin: '0 0 24px', fontSize: 13, color: 'var(--text-muted)' }}>
+            Acceso exclusivo por invitación
+          </p>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* Aclaración sobre credenciales */}
+          <div style={{
+            marginBottom: 20, padding: '10px 14px', borderRadius: 10,
+            background: 'var(--accent-glow)', border: '1px solid var(--border-accent)',
+            fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6,
+          }}>
+            <strong style={{ color: 'var(--text-primary)' }}>¿Cómo son tus credenciales?</strong><br />
+            El <strong>email de acceso</strong> es el que el administrador usó para invitarte.<br />
+            El <strong>nombre</strong> que elegiste al registrarte es solo para identificarte en la plataforma.
+          </div>
+
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
-              <label className="label">Email</label>
+              <label style={{
+                display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+                marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px',
+              }}>
+                Email de acceso
+              </label>
               <input
                 type="email"
-                className="input"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="tu@empresa.com"
+                placeholder="el email con el que te invitaron"
                 required
                 autoFocus
+                style={{
+                  width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14,
+                  background: 'var(--bg-base)', border: '1px solid var(--border)',
+                  color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
+                  transition: 'border-color 0.15s',
+                }}
               />
             </div>
 
             <div>
-              <label className="label">Contraseña</label>
+              <label style={{
+                display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+                marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px',
+              }}>
+                Contraseña
+              </label>
               <input
                 type="password"
-                className="input"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                style={{
+                  width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14,
+                  background: 'var(--bg-base)', border: '1px solid var(--border)',
+                  color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
+                  transition: 'border-color 0.15s',
+                }}
               />
             </div>
 
             {error && (
-              <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <div style={{
+                padding: '8px 12px', borderRadius: 8, fontSize: 12,
+                background: 'var(--danger-bg)', border: '1px solid var(--danger)',
+                color: 'var(--danger)',
+              }}>
                 {error}
-              </p>
+              </div>
             )}
 
             <button
               type="submit"
               disabled={loading}
-              className="btn btn-primary w-full justify-center h-9 mt-1"
+              className="btn btn-primary"
+              style={{ width: '100%', justifyContent: 'center', height: 42, marginTop: 4, fontSize: 14 }}
             >
-              {loading ? <Loader2 size={14} className="animate-spin" /> : 'Ingresar'}
+              {loading ? <Loader2 size={16} className="animate-spin" /> : 'Ingresar'}
             </button>
           </form>
         </div>
 
-        <p className="text-center text-xs text-brand-400 mt-4">
+        <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', marginTop: 16 }}>
           ¿No tenés acceso? Pedile una invitación al administrador.
         </p>
       </div>
