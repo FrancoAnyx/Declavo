@@ -14,6 +14,7 @@ export interface CatalogProduct {
   status: string
   contact_email?: string | null
   contact_whatsapp?: string | null
+  created_at?: string | null
   // catalog_view devuelve org_name (NO organization_name)
   org_name?: string | null
   organization_id?: string | null
@@ -72,6 +73,20 @@ interface ProductCardProps {
   showOrg?: boolean
 }
 
+/** Formatea la fecha de carga de forma relativa y amigable */
+function formatCreatedAt(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return 'Hoy'
+  if (diffDays === 1) return 'Ayer'
+  if (diffDays < 7)  return `Hace ${diffDays} días`
+  if (diffDays < 30) return `Hace ${Math.floor(diffDays / 7)} sem.`
+  if (diffDays < 365) return `Hace ${Math.floor(diffDays / 30)} mes${Math.floor(diffDays / 30) > 1 ? 'es' : ''}`
+  return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 export default function ProductCard({ product, showOrg }: ProductCardProps) {
   const { user }         = useProfile()
   const isLoggedIn       = !!user?.profile
@@ -81,19 +96,52 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
     e.stopPropagation()
     if (!isLoggedIn || !product.contact_whatsapp) return
     const num = product.contact_whatsapp.replace(/\D/g, '')
-    const msg = encodeURIComponent(`Hola, vi "${product.description}" en Declavo y me interesa. ¿Podemos hablar?`)
+    // Mensaje profesional para WhatsApp
+    const lines = [
+      `Estimados,`,
+      ``,
+      `Me comunico a través de la plataforma *Declavo* para consultar sobre el siguiente producto publicado en su catálogo:`,
+      ``,
+      `▪ SKU: ${product.sku}`,
+      `▪ Producto: ${product.description}`,
+      `▪ Marca: ${product.brand}`,
+      ``,
+      `Quedo a disposición para coordinar los detalles.`,
+      `Saludos.`,
+    ]
+    const msg = encodeURIComponent(lines.join('\n'))
     window.open(`https://wa.me/${num}?text=${msg}`, '_blank')
   }
 
   const handleEmail = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!isLoggedIn || !product.contact_email) return
-    window.location.href = `mailto:${product.contact_email}?subject=Consulta Declavo: ${product.sku}&body=Hola, vi "${product.description}" en Declavo y me interesa.`
+
+    const subject = encodeURIComponent(`Consulta vía Declavo — ${product.sku}: ${product.description}`)
+    const bodyLines = [
+      'Estimados,',
+      '',
+      'Me dirijo a ustedes a través de la plataforma Declavo para realizar una consulta sobre el siguiente artículo publicado en su catálogo:',
+      '',
+      `  SKU      : ${product.sku}`,
+      `  Producto : ${product.description}`,
+      `  Marca    : ${product.brand}`,
+      '',
+      'Les solicito información sobre disponibilidad, condiciones comerciales y plazos de entrega.',
+      '',
+      'Quedo a disposición ante cualquier consulta.',
+      '',
+      'Atentamente,',
+      `[Su nombre]`,
+      `[Su empresa]`,
+    ]
+    window.location.href = `mailto:${product.contact_email}?subject=${subject}&body=${encodeURIComponent(bodyLines.join('\n'))}`
   }
 
   const cat      = product.category ?? ''
   const gradient = CAT_GRADIENT[cat] ?? 'linear-gradient(140deg, #1a1d35 0%, #0f1120 100%)'
   const emoji    = CAT_EMOJI[cat]    ?? '📦'
+  const dateLabel = formatCreatedAt(product.created_at)
 
   return (
     <>
@@ -105,6 +153,12 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
           {cat && (
             <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)' }}>
               {cat}
+            </span>
+          )}
+          {/* Fecha de carga */}
+          {dateLabel && (
+            <span style={{ position: 'absolute', bottom: 8, left: 10, fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(4px)' }}>
+              📅 {dateLabel}
             </span>
           )}
           <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 28, background: 'linear-gradient(transparent, var(--bg-card))' }} />
@@ -120,7 +174,7 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span className="badge-accent">{product.brand}</span>
-            {/* showOrg solo para super_admin — usa org_name que es el campo real de catalog_view */}
+            {/* showOrg solo para super_admin */}
             {showOrg && product.org_name && (
               <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                 {product.org_name}
