@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useProfile } from '@/hooks/useProfile'
 import {
@@ -67,9 +66,12 @@ const S = {
 export default function AdminPage() {
   const supabase = createClient()
   const { user, loading: profileLoading } = useProfile()
-  const searchParams = useSearchParams()
-  const initialSection = (searchParams.get('s') as Section) ?? 'overview'
-  const [section, setSection] = useState<Section>(initialSection)
+  const [section, setSection] = useState<Section>('overview')
+
+  useEffect(() => {
+    const s = new URLSearchParams(window.location.search).get('s') as Section | null
+    if (s) setSection(s)
+  }, [])
   const [pendingRequests, setPendingRequests] = useState(0)
 
   useEffect(() => {
