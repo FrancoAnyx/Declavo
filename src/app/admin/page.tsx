@@ -703,10 +703,11 @@ function SolicitudesSection() {
   // Modal de aprobación: pre-llena invitación
   const [approveModal, setApproveModal] = useState<AccessRequest | null>(null)
   const [invForm, setInvForm] = useState({ org_id: '', role: 'member' as 'member' | 'org_admin', expires_days: '7' })
-  const [invSaving, setInvSaving] = useState(false)
-  const [invError, setInvError]   = useState('')
-  const [invCopied, setInvCopied] = useState(false)
-  const [invLink, setInvLink]     = useState('')
+  const [invSaving, setInvSaving]   = useState(false)
+  const [invError, setInvError]     = useState('')
+  const [invCopied, setInvCopied]   = useState(false)
+  const [invLink, setInvLink]       = useState('')
+  const [emailSent, setEmailSent]   = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -745,6 +746,7 @@ function SolicitudesSection() {
     setInvError('')
     setInvLink('')
     setInvCopied(false)
+    setEmailSent(false)
   }
 
   async function handleApprove() {
@@ -772,6 +774,20 @@ function SolicitudesSection() {
     }).eq('id', approveModal.id)
 
     const link = `${window.location.origin}/invite/${data.token}`
+
+    // Enviar email automáticamente
+    const emailRes = await fetch('/api/send-invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: approveModal.email,
+        name: approveModal.name,
+        link,
+        expires_days: Number(invForm.expires_days),
+      }),
+    })
+    setEmailSent(emailRes.ok)
+
     setInvLink(link)
     setInvSaving(false)
     load()
@@ -901,8 +917,16 @@ function SolicitudesSection() {
                 <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--success-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)', margin: '0 auto' }}>
                   <Check size={22} />
                 </div>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>¡Invitación creada!</p>
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Copiá el link y enviáselo a <strong>{approveModal.email}</strong></p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>¡Acceso aprobado!</p>
+                {emailSent ? (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                    Se envió el link de acceso a <strong style={{ color: 'var(--text-primary)' }}>{approveModal.email}</strong>
+                  </p>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                    Email no enviado (configurá <code>RESEND_API_KEY</code>). Copiá el link manualmente:
+                  </p>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', gap: 10, width: '100%' }}>
                   <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{invLink}</span>
                   <button onClick={copyLink} className="btn btn-primary" style={{ flexShrink: 0, fontSize: 12, padding: '5px 12px' }}>
