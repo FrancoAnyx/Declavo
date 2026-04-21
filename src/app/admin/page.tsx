@@ -1,15 +1,16 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useProfile } from '@/hooks/useProfile'
 import {
   LayoutGrid, Building2, Users, Mail, Package,
-  Plus, Send, X, Check, Loader2, Copy, Pencil,
+  Plus, Send, X, Check, Loader2, Copy, Pencil, Inbox,
 } from 'lucide-react'
-import type { Organization, Profile, Invitation } from '@/types/database'
+import type { Organization, Profile, Invitation, AccessRequest } from '@/types/database'
 import clsx from 'clsx'
 
-type Section = 'overview' | 'empresas' | 'usuarios' | 'invitaciones' | 'productos'
+type Section = 'overview' | 'empresas' | 'usuarios' | 'invitaciones' | 'productos' | 'solicitudes'
 
 /* ── Estilos inline temáticos (sin bg-white hardcoded) ── */
 const S = {
@@ -64,8 +65,25 @@ const S = {
 }
 
 export default function AdminPage() {
+  const supabase = createClient()
   const { user, loading: profileLoading } = useProfile()
-  const [section, setSection] = useState<Section>('overview')
+  const searchParams = useSearchParams()
+  const initialSection = (searchParams.get('s') as Section) ?? 'overview'
+  const [section, setSection] = useState<Section>(initialSection)
+  const [pendingRequests, setPendingRequests] = useState(0)
+
+  useEffect(() => {
+    if (user?.profile?.role !== 'super_admin') return
+    supabase.from('access_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+      .then(({ count }) => setPendingRequests(count ?? 0))
+    const ch = supabase.channel('access-requests-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'access_requests' }, () => {
+        supabase.from('access_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+          .then(({ count }) => setPendingRequests(count ?? 0))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [user?.profile?.role]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (profileLoading) return <div className="flex items-center justify-center h-64"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--text-muted)' }} /></div>
   if (user?.profile?.role !== 'super_admin') return <div className="p-8 text-center" style={{ color: 'var(--text-muted)' }}>Acceso denegado.</div>
@@ -85,6 +103,15 @@ export default function AdminPage() {
             {icon}{label}
           </button>
         ))}
+        {/* Solicitudes con badge de pendientes */}
+        <button onClick={() => setSection('solicitudes')} className={clsx('sidebar-item', section === 'solicitudes' && 'sidebar-item-active')} style={{ justifyContent: 'space-between' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Inbox size={14} />Solicitudes</span>
+          {pendingRequests > 0 && (
+            <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--accent)', color: '#fff', borderRadius: 99, padding: '1px 6px', lineHeight: '16px' }}>
+              {pendingRequests}
+            </span>
+          )}
+        </button>
         <div style={S.divider} />
         <span style={S.sectionLabel}>Catálogo</span>
         <button onClick={() => setSection('productos')} className={clsx('sidebar-item', section === 'productos' && 'sidebar-item-active')}>
@@ -97,6 +124,7 @@ export default function AdminPage() {
         {section === 'empresas'     && <EmpresasSection />}
         {section === 'usuarios'     && <UsuariosSection />}
         {section === 'invitaciones' && <InvitacionesSection />}
+        {section === 'solicitudes'  && <SolicitudesSection />}
         {section === 'productos'    && <ProductosSection />}
       </div>
     </div>
@@ -652,6 +680,276 @@ function InvitacionesSection() {
               {tab === 'pending' ? 'Sin invitaciones pendientes.' : tab === 'accepted' ? 'Sin invitaciones aceptadas.' : 'Sin invitaciones expiradas.'}
             </p>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────── */
+/* SOLICITUDES DE ACCESO                                      */
+/* ────────────────────────────────────────────────────────── */
+function SolicitudesSection() {
+  const supabase = createClient()
+  const { user } = useProfile()
+  const [requests, setRequests] = useState<AccessRequest[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [tab, setTab]           = useState<'pending' | 'approved' | 'rejected'>('pending')
+  const [orgs, setOrgs]         = useState<Organization[]>([])
+  const [processing, setProcessing] = useState<string | null>(null)
+
+  // Modal de aprobación: pre-llena invitación
+  const [approveModal, setApproveModal] = useState<AccessRequest | null>(null)
+  const [invForm, setInvForm] = useState({ org_id: '', role: 'member' as 'member' | 'org_admin', expires_days: '7' })
+  const [invSaving, setInvSaving] = useState(false)
+  const [invError, setInvError]   = useState('')
+  const [invCopied, setInvCopied] = useState(false)
+  const [invLink, setInvLink]     = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('access_requests').select('*').order('created_at', { ascending: false })
+    setRequests((data ?? []) as AccessRequest[])
+    setLoading(false)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    load()
+    supabase.from('organizations').select('id,name').eq('is_active', true)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .then(({ data }) => setOrgs((data ?? []) as any))
+
+    const ch = supabase.channel('solicitudes-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'access_requests' }, () => load())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [load])
+
+  async function handleReject(req: AccessRequest) {
+    if (!confirm(`¿Rechazar la solicitud de ${req.name}?`)) return
+    setProcessing(req.id)
+    await supabase.from('access_requests').update({
+      status: 'rejected',
+      processed_at: new Date().toISOString(),
+      processed_by: user?.id ?? null,
+    }).eq('id', req.id)
+    setProcessing(null)
+    load()
+  }
+
+  function openApprove(req: AccessRequest) {
+    setApproveModal(req)
+    setInvForm({ org_id: '', role: 'member', expires_days: '7' })
+    setInvError('')
+    setInvLink('')
+    setInvCopied(false)
+  }
+
+  async function handleApprove() {
+    if (!approveModal) return
+    if (!invForm.org_id) { setInvError('Seleccioná una empresa.'); return }
+    setInvSaving(true)
+    setInvError('')
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + Number(invForm.expires_days))
+
+    const { data, error: e } = await supabase.from('invitations').insert({
+      email: approveModal.email,
+      organization_id: invForm.org_id,
+      role: invForm.role,
+      expires_at: expiresAt.toISOString(),
+      invited_by: user?.id ?? null,
+    }).select('token').single()
+
+    if (e || !data) { setInvError(e?.message ?? 'Error al crear invitación.'); setInvSaving(false); return }
+
+    await supabase.from('access_requests').update({
+      status: 'approved',
+      processed_at: new Date().toISOString(),
+      processed_by: user?.id ?? null,
+    }).eq('id', approveModal.id)
+
+    const link = `${window.location.origin}/invite/${data.token}`
+    setInvLink(link)
+    setInvSaving(false)
+    load()
+  }
+
+  function copyLink() {
+    navigator.clipboard.writeText(invLink)
+    setInvCopied(true)
+    setTimeout(() => setInvCopied(false), 2000)
+  }
+
+  function fmt(iso: string) {
+    const d = new Date(iso)
+    const diff = Math.floor((Date.now() - d.getTime()) / 1000)
+    if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`
+    if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`
+    return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  const pending  = requests.filter(r => r.status === 'pending')
+  const approved = requests.filter(r => r.status === 'approved')
+  const rejected = requests.filter(r => r.status === 'rejected')
+  const shown    = tab === 'pending' ? pending : tab === 'approved' ? approved : rejected
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Solicitudes de acceso</h1>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>Usuarios que pidieron acceso a la plataforma</p>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10, padding: 4, width: 'fit-content' }}>
+        {([
+          ['pending',  `Pendientes (${pending.length})`],
+          ['approved', `Aprobadas (${approved.length})`],
+          ['rejected', `Rechazadas (${rejected.length})`],
+        ] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} style={{
+            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 500, border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+            background: tab === id ? 'var(--bg-card)' : 'transparent',
+            color: tab === id ? 'var(--text-primary)' : 'var(--text-muted)',
+            boxShadow: tab === id ? 'var(--shadow-card)' : 'none',
+          }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 48, textAlign: 'center' }}><Loader2 size={18} className="animate-spin" style={{ color: 'var(--text-muted)', margin: 'auto' }} /></div>
+      ) : shown.length === 0 ? (
+        <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <Inbox size={32} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
+          <p style={{ margin: 0, fontSize: 13 }}>
+            {tab === 'pending' ? 'Sin solicitudes pendientes.' : tab === 'approved' ? 'Sin solicitudes aprobadas.' : 'Sin solicitudes rechazadas.'}
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {shown.map(req => (
+            <div key={req.id} className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              {/* Avatar */}
+              <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: 'var(--accent-glow)', border: '1px solid var(--border-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: 'var(--accent)' }}>
+                {req.name.slice(0, 2).toUpperCase()}
+              </div>
+
+              {/* Info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{req.name}</span>
+                  {req.company && <span className="badge badge-gray">{req.company}</span>}
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmt(req.created_at)}</span>
+                </div>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--accent)' }}>{req.email}</p>
+                {req.message && (
+                  <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{req.message}</p>
+                )}
+              </div>
+
+              {/* Acciones */}
+              {tab === 'pending' && (
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <button
+                    onClick={() => handleReject(req)}
+                    disabled={processing === req.id}
+                    className="btn"
+                    style={{ fontSize: 12, color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                  >
+                    <X size={12} /> Rechazar
+                  </button>
+                  <button
+                    onClick={() => openApprove(req)}
+                    disabled={processing === req.id}
+                    className="btn btn-primary"
+                    style={{ fontSize: 12 }}
+                  >
+                    <Check size={12} /> Aprobar
+                  </button>
+                </div>
+              )}
+              {tab === 'approved' && (
+                <span className="badge badge-green" style={{ flexShrink: 0 }}>Aprobada</span>
+              )}
+              {tab === 'rejected' && (
+                <span className="badge badge-gray" style={{ flexShrink: 0 }}>Rechazada</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal de aprobación */}
+      {approveModal && (
+        <div style={S.modalOverlay} onClick={e => e.target === e.currentTarget && !invLink && setApproveModal(null)}>
+          <div style={S.modal}>
+            <div style={S.modalHeader}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Aprobar solicitud</h2>
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>{approveModal.name} · {approveModal.email}</p>
+              </div>
+              {!invLink && <button onClick={() => setApproveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={16} /></button>}
+            </div>
+
+            {invLink ? (
+              <div style={{ ...S.modalBody, alignItems: 'center', textAlign: 'center' }}>
+                <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--success-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)', margin: '0 auto' }}>
+                  <Check size={22} />
+                </div>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>¡Invitación creada!</p>
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Copiá el link y enviáselo a <strong>{approveModal.email}</strong></p>
+                <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', gap: 10, width: '100%' }}>
+                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{invLink}</span>
+                  <button onClick={copyLink} className="btn btn-primary" style={{ flexShrink: 0, fontSize: 12, padding: '5px 12px' }}>
+                    {invCopied ? <><Check size={11} /> Copiado</> : <><Copy size={11} /> Copiar</>}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={S.modalBody}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={S.label}>Empresa *</label>
+                    <select style={S.select} value={invForm.org_id} onChange={e => setInvForm(f => ({ ...f, org_id: e.target.value }))}>
+                      <option value="">— Seleccionar —</option>
+                      {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={S.label}>Expira en</label>
+                    <select style={S.select} value={invForm.expires_days} onChange={e => setInvForm(f => ({ ...f, expires_days: e.target.value }))}>
+                      {[['3','3 días'],['7','7 días'],['14','14 días'],['30','30 días']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label style={S.label}>Rol</label>
+                  <select style={S.select} value={invForm.role} onChange={e => setInvForm(f => ({ ...f, role: e.target.value as 'member' | 'org_admin' }))}>
+                    <option value="member">Miembro (lectura)</option>
+                    <option value="org_admin">Administrador de empresa</option>
+                  </select>
+                </div>
+                {invError && <div style={S.error}>{invError}</div>}
+              </div>
+            )}
+
+            <div style={S.modalFooter}>
+              {invLink ? (
+                <button onClick={() => setApproveModal(null)} className="btn btn-primary">Listo</button>
+              ) : (
+                <>
+                  <button onClick={() => setApproveModal(null)} className="btn">Cancelar</button>
+                  <button onClick={handleApprove} disabled={invSaving} className="btn btn-primary">
+                    {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                    Generar link de acceso
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

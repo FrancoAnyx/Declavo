@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 function MailIcon() {
   return (
@@ -30,54 +31,30 @@ const LabelStyle: React.CSSProperties = {
 }
 
 export default function GuestBanner() {
+  const supabase = createClient()
   const [showModal, setShowModal] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [sent, setSent]           = useState(false)
+  const [sending, setSending]     = useState(false)
+  const [error, setError]         = useState('')
   const [form, setForm] = useState({ name: '', email: '', company: '', message: '' })
 
   if (dismissed) return null
 
-  function handleSend() {
+  async function handleSend() {
     if (!form.email || !form.name) return
-
-    const subject = encodeURIComponent('Solicitud de acceso a Declavo')
-
-    // Cuerpo del email completo y profesional
-    const lines = [
-      'Estimado equipo de Declavo,',
-      '',
-      'Me dirijo a ustedes para solicitar acceso a la plataforma Declavo, el ecosistema B2B de visibilidad de stock para empresas tecnológicas.',
-      '',
-      '— DATOS DE CONTACTO —',
-      `Nombre completo : ${form.name}`,
-      `Email           : ${form.email}`,
-      form.company
-        ? `Empresa         : ${form.company}`
-        : 'Empresa         : (no especificada)',
-      '',
-    ]
-
-    if (form.message) {
-      lines.push('— SOBRE MI EMPRESA —')
-      lines.push(form.message)
-      lines.push('')
-    }
-
-    lines.push(
-      '— SOLICITUD —',
-      'Solicito que se me envíe un link de invitación al email indicado arriba para poder acceder al catálogo completo y a las funciones de contacto con los publicadores.',
-      '',
-      'Quedo a disposición ante cualquier consulta.',
-      '',
-      `Atentamente,`,
-      form.name,
-      form.company ?? '',
-    )
-
-    const bodyText = lines.filter((_, i, arr) => !(arr[i] === '' && arr[i-1] === '')).join('\n')
-    window.location.href = `mailto:comercial3@anyx.com.ar?subject=${subject}&body=${encodeURIComponent(bodyText)}`
+    setSending(true)
+    setError('')
+    const { error: e } = await supabase.from('access_requests').insert({
+      name:    form.name.trim(),
+      email:   form.email.trim().toLowerCase(),
+      company: form.company.trim() || null,
+      message: form.message.trim() || null,
+    })
+    setSending(false)
+    if (e) { setError('No se pudo enviar la solicitud. Intentá de nuevo.'); return }
     setSent(true)
-    setTimeout(() => setShowModal(false), 2500)
+    setTimeout(() => setShowModal(false), 3000)
   }
 
   return (
@@ -144,7 +121,7 @@ export default function GuestBanner() {
                 </div>
                 <p style={{ fontWeight: 700, fontSize: 18, margin: '0 0 8px', color: 'var(--text-primary)' }}>¡Solicitud enviada!</p>
                 <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-                  Se abrió tu cliente de email con la solicitud lista.<br />Revisá que se haya enviado correctamente.
+                  Recibimos tu solicitud. El equipo de Declavo<br />la revisará y te contactará a <strong>{form.email}</strong>.
                 </p>
               </div>
             ) : (
@@ -153,7 +130,7 @@ export default function GuestBanner() {
                   <div>
                     <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Solicitar acceso</h2>
                     <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-                      Completá el formulario y abrimos tu email con la solicitud lista para enviar.
+                      Completá el formulario y el equipo de Declavo te contactará.
                     </p>
                   </div>
                   <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, marginTop: 2 }}><XIcon /></button>
@@ -185,12 +162,11 @@ export default function GuestBanner() {
                       style={{ resize: 'vertical', minHeight: 72 }}
                     />
                   </div>
-                  <div style={{
-                    padding: '10px 12px', borderRadius: 10, background: 'rgba(99,102,241,0.06)',
-                    border: '1px solid var(--border-accent)', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5,
-                  }}>
-                    💡 Al hacer clic en <strong>Enviar solicitud</strong> se va a abrir tu cliente de email (Outlook, Gmail, etc.) con el mensaje ya redactado. Solo tenés que confirmarlo.
-                  </div>
+                  {error && (
+                    <div style={{ padding: '8px 12px', borderRadius: 8, fontSize: 12, background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: 'var(--danger)' }}>
+                      {error}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ padding: '14px 24px 22px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -202,16 +178,16 @@ export default function GuestBanner() {
                   </button>
                   <button
                     onClick={handleSend}
-                    disabled={!form.email || !form.name}
+                    disabled={!form.email || !form.name || sending}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 7,
                       padding: '9px 20px', borderRadius: 10, fontSize: 14, fontWeight: 600,
-                      cursor: !form.email || !form.name ? 'not-allowed' : 'pointer',
-                      opacity: !form.email || !form.name ? 0.5 : 1,
+                      cursor: (!form.email || !form.name || sending) ? 'not-allowed' : 'pointer',
+                      opacity: (!form.email || !form.name || sending) ? 0.5 : 1,
                       color: '#fff', background: 'var(--accent)', border: 'none', transition: 'all 0.18s',
                     }}
                   >
-                    <MailIcon /> Enviar solicitud
+                    <MailIcon /> {sending ? 'Enviando…' : 'Enviar solicitud'}
                   </button>
                 </div>
               </>
