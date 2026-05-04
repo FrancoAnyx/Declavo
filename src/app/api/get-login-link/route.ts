@@ -17,25 +17,32 @@ export async function GET(req: NextRequest) {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  const { data: request } = await admin
-    .from('access_requests')
-    .select('email, status')
-    .eq('id', id)
-    .single()
+  try {
+    const { data: request } = await admin
+      .from('access_requests')
+      .select('email, status')
+      .eq('id', id)
+      .single()
 
-  if (!request || request.status !== 'approved') {
-    return NextResponse.json({ error: 'Solicitud no aprobada' }, { status: 403 })
+    if (!request || request.status !== 'approved') {
+      return NextResponse.json({ error: 'Solicitud no aprobada' }, { status: 403 })
+    }
+
+    const origin = req.headers.get('origin') ?? process.env.NEXT_PUBLIC_SITE_URL ?? `https://${req.headers.get('host')}`
+
+    const { data, error } = await admin.auth.admin.generateLink({
+      type: 'magiclink',
+      email: request.email,
+      options: { redirectTo: `${origin}/catalogo` },
+    })
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    const actionLink = data?.properties?.action_link
+    if (!actionLink) return NextResponse.json({ error: 'No se pudo generar el link de acceso' }, { status: 500 })
+
+    return NextResponse.json({ url: actionLink })
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
   }
-
-  const origin = req.headers.get('origin') ?? `https://${req.headers.get('host')}`
-
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: 'magiclink',
-    email: request.email,
-    options: { redirectTo: `${origin}/catalogo` },
-  })
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ url: data.properties.action_link })
 }
