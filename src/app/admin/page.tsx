@@ -700,14 +700,11 @@ function SolicitudesSection() {
   const [orgs, setOrgs]         = useState<Organization[]>([])
   const [processing, setProcessing] = useState<string | null>(null)
 
-  // Modal de aprobación: pre-llena invitación
   const [approveModal, setApproveModal] = useState<AccessRequest | null>(null)
-  const [invForm, setInvForm] = useState({ org_id: '', role: 'member' as 'member' | 'org_admin', expires_days: '7' })
-  const [invSaving, setInvSaving]   = useState(false)
-  const [invError, setInvError]     = useState('')
-  const [invCopied, setInvCopied]   = useState(false)
-  const [invLink, setInvLink]       = useState('')
-  const [emailSent, setEmailSent]   = useState(false)
+  const [invForm, setInvForm]     = useState({ org_id: '', role: 'member' as 'member' | 'org_admin' })
+  const [invSaving, setInvSaving] = useState(false)
+  const [invError, setInvError]   = useState('')
+  const [approveSuccess, setApproveSuccess] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -742,11 +739,9 @@ function SolicitudesSection() {
 
   function openApprove(req: AccessRequest) {
     setApproveModal(req)
-    setInvForm({ org_id: '', role: 'member', expires_days: '7' })
+    setInvForm({ org_id: '', role: 'member' })
     setInvError('')
-    setInvLink('')
-    setInvCopied(false)
-    setEmailSent(false)
+    setApproveSuccess(false)
   }
 
   async function handleApprove() {
@@ -754,49 +749,29 @@ function SolicitudesSection() {
     if (!invForm.org_id) { setInvError('Seleccioná una empresa.'); return }
     setInvSaving(true)
     setInvError('')
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + Number(invForm.expires_days))
 
-    const { data, error: e } = await supabase.from('invitations').insert({
-      email: approveModal.email,
-      organization_id: invForm.org_id,
-      role: invForm.role,
-      expires_at: expiresAt.toISOString(),
-      invited_by: user?.id ?? null,
-    }).select('token').single()
-
-    if (e || !data) { setInvError(e?.message ?? 'Error al crear invitación.'); setInvSaving(false); return }
-
-    await supabase.from('access_requests').update({
-      status: 'approved',
-      processed_at: new Date().toISOString(),
-      processed_by: user?.id ?? null,
-    }).eq('id', approveModal.id)
-
-    const link = `${window.location.origin}/invite/${data.token}`
-
-    // Enviar email automáticamente
-    const emailRes = await fetch('/api/send-invite', {
+    const res = await fetch('/api/approve-request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        to: approveModal.email,
-        name: approveModal.name,
-        link,
-        expires_days: Number(invForm.expires_days),
+        requestId: approveModal.id,
+        email:     approveModal.email,
+        name:      approveModal.name,
+        orgId:     invForm.org_id,
+        role:      invForm.role,
       }),
     })
-    setEmailSent(emailRes.ok)
 
-    setInvLink(link)
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      setInvError((err as { error?: string }).error ?? 'Error al procesar la solicitud.')
+      setInvSaving(false)
+      return
+    }
+
     setInvSaving(false)
+    setApproveSuccess(true)
     load()
-  }
-
-  function copyLink() {
-    navigator.clipboard.writeText(invLink)
-    setInvCopied(true)
-    setTimeout(() => setInvCopied(false), 2000)
   }
 
   function fmt(iso: string) {
@@ -902,54 +877,35 @@ function SolicitudesSection() {
 
       {/* Modal de aprobación */}
       {approveModal && (
-        <div style={S.modalOverlay} onClick={e => e.target === e.currentTarget && !invLink && setApproveModal(null)}>
+        <div style={S.modalOverlay} onClick={e => e.target === e.currentTarget && !approveSuccess && setApproveModal(null)}>
           <div style={S.modal}>
             <div style={S.modalHeader}>
               <div>
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Aprobar solicitud</h2>
                 <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>{approveModal.name} · {approveModal.email}</p>
               </div>
-              {!invLink && <button onClick={() => setApproveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={16} /></button>}
+              {!approveSuccess && <button onClick={() => setApproveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={16} /></button>}
             </div>
 
-            {invLink ? (
+            {approveSuccess ? (
               <div style={{ ...S.modalBody, alignItems: 'center', textAlign: 'center' }}>
                 <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--success-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)', margin: '0 auto' }}>
                   <Check size={22} />
                 </div>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>¡Acceso aprobado!</p>
-                {emailSent ? (
-                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
-                    Se envió el link de acceso a <strong style={{ color: 'var(--text-primary)' }}>{approveModal.email}</strong>
-                  </p>
-                ) : (
-                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
-                    Email no enviado (configurá <code>RESEND_API_KEY</code>). Copiá el link manualmente:
-                  </p>
-                )}
-                <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', gap: 10, width: '100%' }}>
-                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{invLink}</span>
-                  <button onClick={copyLink} className="btn btn-primary" style={{ flexShrink: 0, fontSize: 12, padding: '5px 12px' }}>
-                    {invCopied ? <><Check size={11} /> Copiado</> : <><Copy size={11} /> Copiar</>}
-                  </button>
-                </div>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>¡Acceso otorgado!</p>
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                  Se envió un email de activación a <strong style={{ color: 'var(--text-primary)' }}>{approveModal.email}</strong>.<br />
+                  Cuando lo reciba podrá completar el registro.
+                </p>
               </div>
             ) : (
               <div style={S.modalBody}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={S.label}>Empresa *</label>
-                    <select style={S.select} value={invForm.org_id} onChange={e => setInvForm(f => ({ ...f, org_id: e.target.value }))}>
-                      <option value="">— Seleccionar —</option>
-                      {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={S.label}>Expira en</label>
-                    <select style={S.select} value={invForm.expires_days} onChange={e => setInvForm(f => ({ ...f, expires_days: e.target.value }))}>
-                      {[['3','3 días'],['7','7 días'],['14','14 días'],['30','30 días']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                    </select>
-                  </div>
+                <div>
+                  <label style={S.label}>Empresa *</label>
+                  <select style={S.select} value={invForm.org_id} onChange={e => setInvForm(f => ({ ...f, org_id: e.target.value }))}>
+                    <option value="">— Seleccionar —</option>
+                    {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label style={S.label}>Rol</label>
@@ -963,14 +919,14 @@ function SolicitudesSection() {
             )}
 
             <div style={S.modalFooter}>
-              {invLink ? (
+              {approveSuccess ? (
                 <button onClick={() => setApproveModal(null)} className="btn btn-primary">Listo</button>
               ) : (
                 <>
                   <button onClick={() => setApproveModal(null)} className="btn">Cancelar</button>
                   <button onClick={handleApprove} disabled={invSaving} className="btn btn-primary">
-                    {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                    Generar link de acceso
+                    {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                    Otorgar acceso
                   </button>
                 </>
               )}

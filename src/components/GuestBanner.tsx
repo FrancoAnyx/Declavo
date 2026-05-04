@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 function MailIcon() {
@@ -24,10 +24,28 @@ function CheckIcon() {
     </svg>
   )
 }
+function ClockIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+    </svg>
+  )
+}
 
 const LabelStyle: React.CSSProperties = {
   display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
   marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px',
+}
+
+const STORAGE_KEY = 'declavo_pending_request'
+
+type RequestStatus = 'pending' | 'approved' | 'rejected'
+
+interface StoredRequest {
+  id: string
+  email: string
+  name: string
+  status?: RequestStatus
 }
 
 export default function GuestBanner() {
@@ -39,13 +57,55 @@ export default function GuestBanner() {
   const [error, setError]         = useState('')
   const [form, setForm] = useState({ name: '', email: '', company: '', message: '' })
 
-  if (dismissed) return null
+  const [storedRequest, setStoredRequest] = useState<StoredRequest | null>(null)
+  const [requestStatus, setRequestStatus] = useState<RequestStatus>('pending')
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const parsed: StoredRequest = JSON.parse(raw)
+        if (parsed?.id) {
+          setStoredRequest(parsed)
+          setRequestStatus(parsed.status ?? 'pending')
+        }
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (!storedRequest || requestStatus !== 'pending') return
+
+    async function check() {
+      const res = await fetch(`/api/check-request-status?id=${storedRequest!.id}`)
+      if (!res.ok) return
+      const { status } = await res.json() as { status: RequestStatus }
+      if (status === 'approved' || status === 'rejected') {
+        setRequestStatus(status)
+        const updated = { ...storedRequest, status }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+        setStoredRequest(updated)
+      }
+    }
+
+    check()
+    const interval = setInterval(check, 15000)
+    return () => clearInterval(interval)
+  }, [storedRequest, requestStatus])
+
+  function clearPendingRequest() {
+    localStorage.removeItem(STORAGE_KEY)
+    setStoredRequest(null)
+  }
 
   async function handleSend() {
     if (!form.email || !form.name) return
     setSending(true)
     setError('')
+
+    const requestId = crypto.randomUUID()
     const { error: e } = await supabase.from('access_requests').insert({
+      id:      requestId,
       name:    form.name.trim(),
       email:   form.email.trim().toLowerCase(),
       company: form.company.trim() || null,
@@ -53,8 +113,101 @@ export default function GuestBanner() {
     })
     setSending(false)
     if (e) { setError('No se pudo enviar la solicitud. Intentá de nuevo.'); return }
+
+    const newRequest: StoredRequest = {
+      id: requestId,
+      email: form.email.trim().toLowerCase(),
+      name: form.name.trim(),
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newRequest))
+    setStoredRequest(newRequest)
+    setRequestStatus('pending')
     setSent(true)
     setTimeout(() => setShowModal(false), 3000)
+  }
+
+  if (dismissed) return null
+
+  if (storedRequest) {
+    if (requestStatus === 'approved') {
+      return (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(34,197,94,0.03) 100%)',
+          border: '1px solid rgba(34,197,94,0.3)', borderRadius: 14,
+          padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16,
+          marginBottom: 20, position: 'relative',
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+            background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)',
+          }}>
+            <CheckIcon />
+          </div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>
+              ¡Tu solicitud fue aprobada!
+            </p>
+            <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+              Revisá tu email para el link de activación y completá el registro.
+            </p>
+          </div>
+          <button onClick={clearPendingRequest} title="Cerrar" style={{ position: 'absolute', top: 10, right: 10, width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+            <XIcon />
+          </button>
+        </div>
+      )
+    }
+
+    if (requestStatus === 'rejected') {
+      return (
+        <div style={{
+          background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14,
+          padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16,
+          marginBottom: 20, position: 'relative',
+        }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: 'var(--text-secondary)' }}>
+              Tu solicitud de acceso no fue aprobada.
+            </p>
+            <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+              Si tenés dudas, contactanos directamente.
+            </p>
+          </div>
+          <button onClick={clearPendingRequest} title="Cerrar" style={{ position: 'absolute', top: 10, right: 10, width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+            <XIcon />
+          </button>
+        </div>
+      )
+    }
+
+    return (
+      <div style={{
+        background: 'linear-gradient(135deg, var(--accent-glow) 0%, rgba(167,139,250,0.07) 100%)',
+        border: '1px solid var(--border-accent)', borderRadius: 14,
+        padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16,
+        marginBottom: 20, position: 'relative',
+      }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+          background: 'var(--accent-glow)', border: '1px solid var(--border-accent)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)',
+        }}>
+          <ClockIcon />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>
+            Tu solicitud está en revisión
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            El equipo de Declavo la revisará a la brevedad. Quedate en la página o volvé más tarde.
+          </p>
+        </div>
+        <button onClick={clearPendingRequest} title="Cerrar" style={{ position: 'absolute', top: 10, right: 10, width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+          <XIcon />
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -121,7 +274,7 @@ export default function GuestBanner() {
                 </div>
                 <p style={{ fontWeight: 700, fontSize: 18, margin: '0 0 8px', color: 'var(--text-primary)' }}>¡Solicitud enviada!</p>
                 <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-                  Recibimos tu solicitud. El equipo de Declavo<br />la revisará y te contactará a <strong>{form.email}</strong>.
+                  Recibimos tu solicitud. El equipo de Declavo<br />la revisará a la brevedad.
                 </p>
               </div>
             ) : (
@@ -130,7 +283,7 @@ export default function GuestBanner() {
                   <div>
                     <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Solicitar acceso</h2>
                     <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-                      Completá el formulario y el equipo de Declavo te contactará.
+                      Completá el formulario y el equipo de Declavo te dará acceso.
                     </p>
                   </div>
                   <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, marginTop: 2 }}><XIcon /></button>
