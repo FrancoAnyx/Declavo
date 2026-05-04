@@ -135,12 +135,15 @@ export default function GuestBanner() {
 
     async function check() {
       try {
-        const res = await fetch(`/api/check-request-status?id=${storedRequest!.id}`)
-        if (!res.ok) return
-        const json = await res.json() as { status: RequestStatus }
-        if (json.status === 'approved' || json.status === 'rejected') {
-          setRequestStatus(json.status)
-          const updated = { ...storedRequest, status: json.status }
+        const { data } = await supabase
+          .from('access_requests')
+          .select('status')
+          .eq('id', storedRequest!.id)
+          .single()
+        const s = data?.status as RequestStatus | undefined
+        if (s === 'approved' || s === 'rejected') {
+          setRequestStatus(s)
+          const updated = { ...storedRequest, status: s }
           localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
           setStoredRequest(updated)
         }
@@ -148,7 +151,7 @@ export default function GuestBanner() {
     }
 
     check()
-    const interval = setInterval(check, 15000)
+    const interval = setInterval(check, 10000)
     return () => clearInterval(interval)
   }, [storedRequest, requestStatus])
 
