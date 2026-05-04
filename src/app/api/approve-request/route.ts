@@ -21,9 +21,8 @@ export async function POST(req: NextRequest) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 
-  if (!serviceKey || !supabaseUrl) {
-    return NextResponse.json({ error: 'Servicio no configurado: falta SUPABASE_SERVICE_ROLE_KEY' }, { status: 500 })
-  }
+  if (!supabaseUrl) return NextResponse.json({ error: 'Falta NEXT_PUBLIC_SUPABASE_URL' }, { status: 500 })
+  if (!serviceKey) return NextResponse.json({ error: 'Falta SUPABASE_SERVICE_ROLE_KEY' }, { status: 500 })
 
   const admin = createAdminClient(supabaseUrl, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
