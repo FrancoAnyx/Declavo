@@ -134,15 +134,17 @@ export default function GuestBanner() {
     if (!storedRequest || requestStatus !== 'pending') return
 
     async function check() {
-      const res = await fetch(`/api/check-request-status?id=${storedRequest!.id}`)
-      if (!res.ok) return
-      const { status } = await res.json() as { status: RequestStatus }
-      if (status === 'approved' || status === 'rejected') {
-        setRequestStatus(status)
-        const updated = { ...storedRequest, status }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
-        setStoredRequest(updated)
-      }
+      try {
+        const res = await fetch(`/api/check-request-status?id=${storedRequest!.id}`)
+        if (!res.ok) return
+        const json = await res.json() as { status: RequestStatus }
+        if (json.status === 'approved' || json.status === 'rejected') {
+          setRequestStatus(json.status)
+          const updated = { ...storedRequest, status: json.status }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+          setStoredRequest(updated)
+        }
+      } catch {}
     }
 
     check()
