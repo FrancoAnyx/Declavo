@@ -37,16 +37,22 @@ const LabelStyle: React.CSSProperties = {
   marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px',
 }
 
-function ApprovedBanner({ email, onClear }: { email: string; onClear: () => void }) {
-  const supabase = createClient()
-  const [linkSent, setLinkSent] = useState(false)
-  const [sending, setSending]   = useState(false)
+function ApprovedBanner({ requestId, onClear }: { requestId: string; onClear: () => void }) {
+  const [sending, setSending] = useState(false)
+  const [error, setError]     = useState('')
 
   async function handleLogin() {
     setSending(true)
-    await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
-    setSending(false)
-    setLinkSent(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/get-login-link?id=${requestId}`)
+      const json = await res.json()
+      if (!res.ok || !json.url) { setError(json.error ?? 'Error al generar el acceso.'); setSending(false); return }
+      window.location.href = json.url
+    } catch {
+      setError('Error de conexión. Intentá de nuevo.')
+      setSending(false)
+    }
   }
 
   return (
@@ -68,25 +74,21 @@ function ApprovedBanner({ email, onClear }: { email: string; onClear: () => void
           ¡Tu solicitud fue aprobada!
         </p>
         <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-          {linkSent
-            ? `Revisá tu email (${email}) para el link de acceso.`
-            : 'Hacé clic en "Ingresar" para recibir tu link de acceso por email.'}
+          {error || 'Hacé clic en "Ingresar" para acceder a la plataforma.'}
         </p>
       </div>
-      {!linkSent && (
-        <button
-          onClick={handleLogin}
-          disabled={sending}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 10,
-            fontSize: 14, fontWeight: 600, cursor: sending ? 'not-allowed' : 'pointer',
-            color: '#fff', background: 'rgba(34,197,94,0.8)', border: 'none', flexShrink: 0,
-            opacity: sending ? 0.6 : 1,
-          }}
-        >
-          {sending ? 'Enviando…' : 'Ingresar'}
-        </button>
-      )}
+      <button
+        onClick={handleLogin}
+        disabled={sending}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 10,
+          fontSize: 14, fontWeight: 600, cursor: sending ? 'not-allowed' : 'pointer',
+          color: '#fff', background: 'rgba(34,197,94,0.8)', border: 'none', flexShrink: 0,
+          opacity: sending ? 0.6 : 1,
+        }}
+      >
+        {sending ? 'Cargando…' : 'Ingresar'}
+      </button>
       <button onClick={onClear} title="Cerrar" style={{ position: 'absolute', top: 10, right: 10, width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
         <XIcon />
       </button>
@@ -192,7 +194,7 @@ export default function GuestBanner() {
 
   if (storedRequest) {
     if (requestStatus === 'approved') {
-      return <ApprovedBanner email={storedRequest.email} onClear={clearPendingRequest} />
+      return <ApprovedBanner requestId={storedRequest.id} onClear={clearPendingRequest} />
     }
 
     if (requestStatus === 'rejected') {
