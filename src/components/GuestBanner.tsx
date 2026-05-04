@@ -46,8 +46,13 @@ function ApprovedBanner({ requestId, onClear }: { requestId: string; onClear: ()
     setError('')
     try {
       const res = await fetch(`/api/get-login-link?id=${requestId}`)
-      const json = await res.json()
-      if (!res.ok || !json.url) { setError(json.error ?? 'Error al generar el acceso.'); setSending(false); return }
+      let json: { url?: string; error?: string } = {}
+      try { json = await res.json() } catch {}
+      if (!res.ok || !json.url) {
+        setError(json.error ?? 'Servicio no disponible. Intentá en unos minutos.')
+        setSending(false)
+        return
+      }
       window.location.href = json.url
     } catch {
       setError('Error de conexión. Intentá de nuevo.')
