@@ -28,18 +28,17 @@ export async function POST(req: NextRequest) {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  const origin = req.headers.get('origin') ?? process.env.NEXT_PUBLIC_SITE_URL ?? `https://${req.headers.get('host')}`
-
-  const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: { full_name: name },
-    redirectTo: `${origin}/catalogo`,
+  const { data: userData, error: createError } = await admin.auth.admin.createUser({
+    email,
+    email_confirm: true,
+    user_metadata: { full_name: name },
   })
 
-  if (inviteError) {
-    return NextResponse.json({ error: `No se pudo crear el usuario: ${inviteError.message}` }, { status: 500 })
+  if (createError) {
+    return NextResponse.json({ error: `No se pudo crear el usuario: ${createError.message}` }, { status: 500 })
   }
 
-  const userId = inviteData.user.id
+  const userId = userData.user.id
 
   await admin.from('profiles').upsert({
     id: userId,

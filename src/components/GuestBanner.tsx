@@ -37,6 +37,63 @@ const LabelStyle: React.CSSProperties = {
   marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px',
 }
 
+function ApprovedBanner({ email, onClear }: { email: string; onClear: () => void }) {
+  const supabase = createClient()
+  const [linkSent, setLinkSent] = useState(false)
+  const [sending, setSending]   = useState(false)
+
+  async function handleLogin() {
+    setSending(true)
+    await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
+    setSending(false)
+    setLinkSent(true)
+  }
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(34,197,94,0.03) 100%)',
+      border: '1px solid rgba(34,197,94,0.3)', borderRadius: 14,
+      padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+      marginBottom: 20, position: 'relative',
+    }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+        background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)',
+      }}>
+        <CheckIcon />
+      </div>
+      <div style={{ flex: 1, minWidth: 200 }}>
+        <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>
+          ¡Tu solicitud fue aprobada!
+        </p>
+        <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+          {linkSent
+            ? `Revisá tu email (${email}) para el link de acceso.`
+            : 'Hacé clic en "Ingresar" para recibir tu link de acceso por email.'}
+        </p>
+      </div>
+      {!linkSent && (
+        <button
+          onClick={handleLogin}
+          disabled={sending}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 10,
+            fontSize: 14, fontWeight: 600, cursor: sending ? 'not-allowed' : 'pointer',
+            color: '#fff', background: 'rgba(34,197,94,0.8)', border: 'none', flexShrink: 0,
+            opacity: sending ? 0.6 : 1,
+          }}
+        >
+          {sending ? 'Enviando…' : 'Ingresar'}
+        </button>
+      )}
+      <button onClick={onClear} title="Cerrar" style={{ position: 'absolute', top: 10, right: 10, width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+        <XIcon />
+      </button>
+    </div>
+  )
+}
+
 const STORAGE_KEY = 'declavo_pending_request'
 
 type RequestStatus = 'pending' | 'approved' | 'rejected'
@@ -130,33 +187,7 @@ export default function GuestBanner() {
 
   if (storedRequest) {
     if (requestStatus === 'approved') {
-      return (
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(34,197,94,0.03) 100%)',
-          border: '1px solid rgba(34,197,94,0.3)', borderRadius: 14,
-          padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16,
-          marginBottom: 20, position: 'relative',
-        }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-            background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)',
-          }}>
-            <CheckIcon />
-          </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>
-              ¡Tu solicitud fue aprobada!
-            </p>
-            <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-              Revisá tu email para el link de activación y completá el registro.
-            </p>
-          </div>
-          <button onClick={clearPendingRequest} title="Cerrar" style={{ position: 'absolute', top: 10, right: 10, width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-            <XIcon />
-          </button>
-        </div>
-      )
+      return <ApprovedBanner email={storedRequest.email} onClear={clearPendingRequest} />
     }
 
     if (requestStatus === 'rejected') {
