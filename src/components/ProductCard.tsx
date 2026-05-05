@@ -15,7 +15,6 @@ export interface CatalogProduct {
   contact_email?: string | null
   contact_whatsapp?: string | null
   created_at?: string | null
-  // catalog_view devuelve org_name (NO organization_name)
   org_name?: string | null
   organization_id?: string | null
 }
@@ -27,24 +26,9 @@ function AvailBadge({ qty }: { qty: number }) {
   return             <span className="badge-danger">● Sin stock</span>
 }
 
-function WAIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-      <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.556 4.118 1.528 5.845L.057 23.743a.5.5 0 0 0 .623.623l5.898-1.471A11.948 11.948 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.884 0-3.648-.52-5.15-1.42l-.37-.22-3.499.872.887-3.5-.24-.38A9.944 9.944 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
-    </svg>
-  )
-}
-function MailIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="2,4 12,13 22,4"/>
-    </svg>
-  )
-}
 function ChatIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
     </svg>
   )
@@ -73,7 +57,6 @@ interface ProductCardProps {
   showOrg?: boolean
 }
 
-/** Formatea la fecha de carga de forma relativa y amigable */
 function formatCreatedAt(iso: string | null | undefined): string {
   if (!iso) return ''
   const d = new Date(iso)
@@ -92,52 +75,6 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
   const isLoggedIn       = !!user?.profile
   const [chatOpen, setChatOpen] = useState(false)
 
-  const handleWA = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!isLoggedIn || !product.contact_whatsapp) return
-    const num = product.contact_whatsapp.replace(/\D/g, '')
-    // Mensaje profesional para WhatsApp
-    const lines = [
-      `Estimados,`,
-      ``,
-      `Me comunico a través de la plataforma *Declavo* para consultar sobre el siguiente producto publicado en su catálogo:`,
-      ``,
-      `▪ SKU: ${product.sku}`,
-      `▪ Producto: ${product.description}`,
-      `▪ Marca: ${product.brand}`,
-      ``,
-      `Quedo a disposición para coordinar los detalles.`,
-      `Saludos.`,
-    ]
-    const msg = encodeURIComponent(lines.join('\n'))
-    window.open(`https://wa.me/${num}?text=${msg}`, '_blank')
-  }
-
-  const handleEmail = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!isLoggedIn || !product.contact_email) return
-
-    const subject = encodeURIComponent(`Consulta vía Declavo — ${product.sku}: ${product.description}`)
-    const bodyLines = [
-      'Estimados,',
-      '',
-      'Me dirijo a ustedes a través de la plataforma Declavo para realizar una consulta sobre el siguiente artículo publicado en su catálogo:',
-      '',
-      `  SKU      : ${product.sku}`,
-      `  Producto : ${product.description}`,
-      `  Marca    : ${product.brand}`,
-      '',
-      'Les solicito información sobre disponibilidad, condiciones comerciales y plazos de entrega.',
-      '',
-      'Quedo a disposición ante cualquier consulta.',
-      '',
-      'Atentamente,',
-      `[Su nombre]`,
-      `[Su empresa]`,
-    ]
-    window.location.href = `mailto:${product.contact_email}?subject=${subject}&body=${encodeURIComponent(bodyLines.join('\n'))}`
-  }
-
   const cat      = product.category ?? ''
   const gradient = CAT_GRADIENT[cat] ?? 'linear-gradient(140deg, #1a1d35 0%, #0f1120 100%)'
   const emoji    = CAT_EMOJI[cat]    ?? '📦'
@@ -155,7 +92,6 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
               {cat}
             </span>
           )}
-          {/* Fecha de carga */}
           {dateLabel && (
             <span style={{ position: 'absolute', bottom: 8, left: 10, fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(4px)' }}>
               📅 {dateLabel}
@@ -174,7 +110,6 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span className="badge-accent">{product.brand}</span>
-            {/* showOrg solo para super_admin */}
             {showOrg && product.org_name && (
               <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                 {product.org_name}
@@ -189,27 +124,23 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
           </div>
         </div>
 
-        {/* Footer */}
-        <div style={{ display: 'flex', gap: 6, padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.12)' }}>
+        {/* Footer — solo Chat */}
+        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.12)' }}>
           {isLoggedIn ? (
-            <>
-              <button className="btn-wa" onClick={handleWA} disabled={!product.contact_whatsapp} title={product.contact_whatsapp ? 'WhatsApp' : 'Sin WhatsApp'}>
-                <WAIcon /> WA
-              </button>
-              <button className="btn-email" onClick={handleEmail} disabled={!product.contact_email} title={product.contact_email ? 'Email' : 'Sin email'}>
-                <MailIcon /> Email
-              </button>
-              <button
-                onClick={() => setChatOpen(true)}
-                title="Chat interno"
-                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', color: 'var(--text-secondary)', transition: 'all 0.2s', flexShrink: 0 }}
-              >
-                <ChatIcon /> Chat
-              </button>
-            </>
+            <button
+              onClick={() => setChatOpen(true)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                padding: '9px 14px', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                background: 'var(--accent-glow)', border: '1px solid var(--border-accent)',
+                color: 'var(--accent)', transition: 'all 0.2s',
+              }}
+            >
+              <ChatIcon /> Consultar por chat
+            </button>
           ) : (
             <p style={{ width: '100%', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-              <a href="/login">Iniciá sesión</a> para ver contacto
+              <a href="/login">Iniciá sesión</a> para consultar
             </p>
           )}
         </div>
