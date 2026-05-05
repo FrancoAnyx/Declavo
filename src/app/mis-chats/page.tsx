@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useProfile } from '@/context/ProfileContext'
-import type { ChatSessionStatus } from '@/types/database'
 
 /* ── Icons ── */
 function LockIcon() {
@@ -21,13 +20,6 @@ function ClockIcon() {
     </svg>
   )
 }
-function CheckIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12"/>
-    </svg>
-  )
-}
 
 /* ── Predefined seller responses ── */
 const SELLER_MESSAGES = [
@@ -40,17 +32,15 @@ const SELLER_MESSAGES = [
 ]
 
 /* ── Types ── */
-interface SessionRow {
-  id: string
-  status: ChatSessionStatus
-  sale_price: number | null
-  last_message_at: string
-  last_message_from: string | null
-  buyer_org_id: string
-  product_id: string
-  buyer_org_name: string
-  product_sku: string
-  product_description: string
+interface ProductThread {
+  productId: string
+  productSku: string
+  productDescription: string
+  lastMessageAt: string
+  messageCount: number
+  openSessionId: string | null
+  openSessionStatus: string | null
+  openSessionSalePrice: number | null
 }
 
 interface RawMessage {
@@ -73,8 +63,8 @@ export default function MisChatsPage() {
   const { user, loading: profileLoading } = useProfile()
   const myOrgId = user?.organization?.id ?? null
 
-  const [sessions, setSessions]        = useState<SessionRow[]>([])
-  const [loadingSessions, setLoadingS] = useState(true)
+  const [threads, setThreads]          = useState<ProductThread[]>([])
+  const [loadingThreads, setLoadingT]  = useState(true)
   const [selectedId, setSelectedId]    = useState<string | null>(null)
   const [messages, setMessages]        = useState<DisplayMessage[]>([])
   const [loadingMsgs, setLoadingMsgs]  = useState(false)
@@ -91,62 +81,83 @@ export default function MisChatsPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  /* ── Load seller sessions ── */
-  const loadSessions = useCallback(async () => {
-    if (!myOrgId) { setLoadingS(false); return }
+  /* ── Load threads for seller ── */
+  const loadThreads = useCallback(async () => {
+    if (!myOrgId) { setLoadingT(false); return }
 
     const { data: myProducts } = await supabase
       .from('products')
       .select('id, sku, description')
       .eq('organization_id', myOrgId)
 
-    if (!myProducts?.length) { setSessions([]); setLoadingS(false); return }
+    if (!myProducts?.length) { setThreads([]); setLoadingT(false); return }
 
-    const productIds = myProducts.map((p: { id: string }) => p.id)
+    const productIds = (myProducts as { id: string }[]).map(p => p.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const productMap: Record<string, { sku: string; description: string }> = {}
     ;(myProducts as { id: string; sku: string; description: string }[]).forEach(p => {
       productMap[p.id] = { sku: p.sku, description: p.description }
     })
 
-    const { data: chatSessions } = await supabase
+    // All messages for seller's products (no session_id filter — includes legacy)
+    const { data: msgs } = await supabase
+      .from('product_messages')
+      .select('product_id, created_at')
+      .in('product_id', productIds)
+      .order('created_at', { ascending: false })
+
+    // Open sessions for seller's products (for reply/close capability)
+    const { data: openSessions } = await supabase
       .from('chat_sessions')
-      .select('id, status, sale_price, last_message_at, last_message_from, buyer_org_id, product_id')
+      .select('id, product_id, status, sale_price, last_message_from')
       .in('product_id', productIds)
       .order('last_message_at', { ascending: false })
 
-    if (!chatSessions?.length) { setSessions([]); setLoadingS(false); return }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const openSessionMap: Record<string, { id: string; status: string; salePrice: number | null; lastFrom: string | null }> = {}
+    ;(openSessions ?? []).forEach((s: any) => {
+      // Keep the most recent session per product
+      if (!openSessionMap[s.product_id]) {
+        openSessionMap[s.product_id] = { id: s.id, status: s.status, salePrice: s.sale_price, lastFrom: s.last_message_from }
+      }
+    })
 
-    const buyerOrgIds = [...new Set((chatSessions as { buyer_org_id: string }[]).map(s => s.buyer_org_id))]
-    const { data: buyerOrgs } = await supabase
-      .from('organizations')
-      .select('id, name')
-      .in('id', buyerOrgIds)
+    const latestAt: Record<string, string> = {}
+    const countBy:  Record<string, number> = {}
+    ;(msgs ?? []).forEach((m: { product_id: string; created_at: string }) => {
+      if (!latestAt[m.product_id]) latestAt[m.product_id] = m.created_at
+      countBy[m.product_id] = (countBy[m.product_id] ?? 0) + 1
+    })
 
-    const orgMap: Record<string, string> = {}
-    ;(buyerOrgs ?? []).forEach((o: { id: string; name: string }) => { orgMap[o.id] = o.name })
+    // Only show products that have at least one message
+    const activeProductIds = productIds.filter(pid => latestAt[pid])
 
-    setSessions((chatSessions as {
-      id: string; status: string; sale_price: number | null; last_message_at: string;
-      last_message_from: string | null; buyer_org_id: string; product_id: string;
-    }[]).map(s => ({
-      ...s,
-      status: s.status as ChatSessionStatus,
-      buyer_org_name: orgMap[s.buyer_org_id] ?? 'Empresa',
-      product_sku: productMap[s.product_id]?.sku ?? '',
-      product_description: productMap[s.product_id]?.description ?? '',
-    })))
-    setLoadingS(false)
+    setThreads(activeProductIds.map(pid => {
+      const sess = openSessionMap[pid] ?? null
+      return {
+        productId:            pid,
+        productSku:           productMap[pid]?.sku ?? '',
+        productDescription:   productMap[pid]?.description ?? '',
+        lastMessageAt:        latestAt[pid] ?? '',
+        messageCount:         countBy[pid] ?? 0,
+        openSessionId:        sess?.id ?? null,
+        openSessionStatus:    sess?.status ?? null,
+        openSessionSalePrice: sess?.salePrice ?? null,
+      }
+    }).sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt)))
+
+    setLoadingT(false)
   }, [myOrgId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { if (myOrgId) loadSessions() }, [loadSessions, myOrgId])
+  useEffect(() => { if (myOrgId) loadThreads() }, [loadThreads, myOrgId])
 
-  /* ── Load messages for selected session ── */
-  const loadMessages = useCallback(async (sid: string) => {
+  /* ── Load messages for selected product ── */
+  const loadMessages = useCallback(async (productId: string) => {
     setLoadingMsgs(true)
     const { data: rawMsgs } = await supabase
       .from('product_messages')
       .select('id, product_id, session_id, sender_id, sender_org_id, body, created_at')
-      .eq('session_id', sid)
+      .eq('product_id', productId)
       .order('created_at', { ascending: true })
 
     if (!rawMsgs?.length) { setMessages([]); setLoadingMsgs(false); return }
@@ -167,9 +178,9 @@ export default function MisChatsPage() {
     setLoadingMsgs(false)
   }, [myOrgId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function selectSession(id: string) {
-    setSelectedId(id)
-    loadMessages(id)
+  function selectThread(productId: string) {
+    setSelectedId(productId)
+    loadMessages(productId)
     setShowCloseModal(false)
     setCloseReason(null)
     setSalePrice('')
@@ -179,17 +190,12 @@ export default function MisChatsPage() {
   useEffect(() => {
     if (!selectedId) return
     const ch = supabase
-      .channel(`seller-chat-${selectedId}`)
+      .channel(`seller-product-${selectedId}`)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public',
         table: 'product_messages',
-        filter: `session_id=eq.${selectedId}`,
-      }, () => { loadMessages(selectedId); loadSessions() })
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public',
-        table: 'chat_sessions',
-        filter: `id=eq.${selectedId}`,
-      }, () => loadSessions())
+        filter: `product_id=eq.${selectedId}`,
+      }, () => { loadMessages(selectedId); loadThreads() })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -197,13 +203,13 @@ export default function MisChatsPage() {
   /* ── Send seller message ── */
   async function sendMessage(text: string) {
     if (!selectedId || !user || sending) return
-    const currentSession = sessions.find(s => s.id === selectedId)
-    if (!currentSession || currentSession.status !== 'open') return
+    const currentThread = threads.find(t => t.productId === selectedId)
+    if (!currentThread?.openSessionId) return
 
     setSending(true)
     await supabase.from('product_messages').insert({
-      product_id:    currentSession.product_id,
-      session_id:    selectedId,
+      product_id:    selectedId,
+      session_id:    currentThread.openSessionId,
       sender_id:     user.id,
       sender_org_id: myOrgId,
       body:          text,
@@ -211,23 +217,24 @@ export default function MisChatsPage() {
     fetch('/api/chat/notify-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: selectedId, messageBody: text, senderRole: 'seller' }),
+      body: JSON.stringify({ sessionId: currentThread.openSessionId, messageBody: text, senderRole: 'seller' }),
     }).catch(() => {})
     setSending(false)
     await loadMessages(selectedId)
-    loadSessions()
+    loadThreads()
   }
 
   /* ── Close session ── */
   async function handleClose() {
-    if (!selectedId || !closeReason) return
+    const currentThread = threads.find(t => t.productId === selectedId)
+    if (!currentThread?.openSessionId || !closeReason) return
     if (closeReason === 'agreed' && !salePrice.trim()) return
     setClosing(true)
     await fetch('/api/chat/close-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessionId: selectedId,
+        sessionId: currentThread.openSessionId,
         reason: closeReason,
         ...(closeReason === 'agreed' ? { salePrice: parseFloat(salePrice) } : {}),
       }),
@@ -236,7 +243,7 @@ export default function MisChatsPage() {
     setShowCloseModal(false)
     setCloseReason(null)
     setSalePrice('')
-    await loadSessions()
+    await loadThreads()
   }
 
   /* ── Helpers ── */
@@ -262,8 +269,8 @@ export default function MisChatsPage() {
     else last.msgs.push(m)
   })
 
-  const currentSession = sessions.find(s => s.id === selectedId) ?? null
-  const isOpen = currentSession?.status === 'open'
+  const currentThread = threads.find(t => t.productId === selectedId) ?? null
+  const isOpen = currentThread?.openSessionStatus === 'open'
 
   if (!profileLoading && !user) {
     return (
@@ -286,7 +293,7 @@ export default function MisChatsPage() {
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 64px)', background: 'var(--bg-base)' }}>
 
-      {/* ── Lista de sesiones ── */}
+      {/* ── Lista de hilos ── */}
       <div style={{
         width: 300, flexShrink: 0,
         borderRight: '1px solid var(--border)',
@@ -299,58 +306,57 @@ export default function MisChatsPage() {
             Mis Chats
           </h1>
           <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-            {sessions.filter(s => s.status === 'open').length} consultas activas
+            {threads.filter(t => t.openSessionStatus === 'open').length} consultas activas
           </p>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {loadingSessions ? (
+          {loadingThreads ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
               Cargando…
             </div>
-          ) : sessions.length === 0 ? (
+          ) : threads.length === 0 ? (
             <div style={{ padding: '32px 16px', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 10 }}>💬</div>
               <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Sin consultas aún</p>
             </div>
           ) : (
-            sessions.map(s => {
-              const needsReply = s.status === 'open' && s.last_message_from === 'buyer'
-              const isSelected = s.id === selectedId
+            threads.map(t => {
+              const needsReply = t.openSessionStatus === 'open'
+              const isSelected = t.productId === selectedId
               return (
                 <button
-                  key={s.id}
-                  onClick={() => selectSession(s.id)}
+                  key={t.productId}
+                  onClick={() => selectThread(t.productId)}
                   style={{
                     width: '100%', textAlign: 'left',
-                    padding: '12px 14px', borderBottom: '1px solid var(--border)',
+                    padding: '12px 14px',
                     background: isSelected ? 'var(--accent-glow)' : 'transparent',
-                    borderLeft: isSelected ? '3px solid var(--accent)' : '3px solid transparent',
-                    cursor: 'pointer', transition: 'all 0.12s', border: 'none',
-                    borderBottomWidth: 1, borderBottomStyle: 'solid', borderBottomColor: 'var(--border)',
-                    borderLeftWidth: isSelected ? 3 : 3, borderLeftStyle: 'solid',
-                    borderLeftColor: isSelected ? 'var(--accent)' : 'transparent',
+                    borderBottom: '1px solid var(--border)',
+                    borderLeft: `3px solid ${isSelected ? 'var(--accent)' : 'transparent'}`,
+                    borderTop: 'none', borderRight: 'none',
+                    cursor: 'pointer', transition: 'all 0.12s',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                     <span style={{
-                      fontSize: 12, fontWeight: 700, color: 'var(--text-primary)',
+                      fontSize: 12, fontWeight: 700, color: 'var(--accent)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
                     }}>
-                      {s.buyer_org_name}
+                      {t.productSku}
                     </span>
                     <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0, marginLeft: 8 }}>
-                      {fmtTime(s.last_message_at)}
+                      {fmtTime(t.lastMessageAt)}
                     </span>
                   </div>
                   <p style={{
-                    margin: '0 0 5px', fontSize: 11, color: 'var(--accent)', fontWeight: 600,
+                    margin: '0 0 5px', fontSize: 11, color: 'var(--text-primary)', fontWeight: 500,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
-                    {s.product_sku}
+                    {t.productDescription}
                   </p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    {s.status !== 'open' ? (
+                    {t.openSessionStatus && t.openSessionStatus !== 'open' ? (
                       <span style={{
                         display: 'flex', alignItems: 'center', gap: 4,
                         fontSize: 10, color: 'var(--text-muted)',
@@ -358,8 +364,8 @@ export default function MisChatsPage() {
                         border: '1px solid var(--border)',
                       }}>
                         <LockIcon />
-                        {s.status === 'closed_agreed'
-                          ? `Acordado${s.sale_price ? ` $${s.sale_price.toLocaleString('es-AR')}` : ''}`
+                        {t.openSessionStatus === 'closed_agreed'
+                          ? `Acordado${t.openSessionSalePrice ? ` $${t.openSessionSalePrice.toLocaleString('es-AR')}` : ''}`
                           : 'Sin acuerdo'}
                       </span>
                     ) : needsReply ? (
@@ -367,9 +373,7 @@ export default function MisChatsPage() {
                         <ClockIcon /> Responder
                       </span>
                     ) : (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--text-muted)' }}>
-                        <CheckIcon /> Respondido
-                      </span>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.messageCount} mensajes</span>
                     )}
                   </div>
                 </button>
@@ -404,14 +408,14 @@ export default function MisChatsPage() {
           }}>
             <div>
               <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>
-                {currentSession?.buyer_org_name}
+                {currentThread?.productSku}
               </p>
-              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--accent)' }}>
-                {currentSession?.product_sku} — {currentSession?.product_description}
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                {currentThread?.productDescription}
               </p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {currentSession?.status !== 'open' && (
+              {currentThread?.openSessionStatus && currentThread.openSessionStatus !== 'open' && (
                 <span style={{
                   display: 'flex', alignItems: 'center', gap: 5,
                   padding: '5px 12px', borderRadius: 7,
@@ -419,8 +423,8 @@ export default function MisChatsPage() {
                   fontSize: 12, color: 'var(--text-muted)',
                 }}>
                   <LockIcon />
-                  {currentSession?.status === 'closed_agreed'
-                    ? `Acordado${currentSession?.sale_price ? ` — $${currentSession.sale_price.toLocaleString('es-AR')}` : ''}`
+                  {currentThread.openSessionStatus === 'closed_agreed'
+                    ? `Acordado${currentThread.openSessionSalePrice ? ` — $${currentThread.openSessionSalePrice.toLocaleString('es-AR')}` : ''}`
                     : 'Sin acuerdo'}
                 </span>
               )}
@@ -452,7 +456,7 @@ export default function MisChatsPage() {
             ) : messages.length === 0 ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, paddingTop: 40 }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>💬</div>
-                <p style={{ margin: 0 }}>Sin mensajes en esta sesión</p>
+                <p style={{ margin: 0 }}>Sin mensajes en esta conversación</p>
               </div>
             ) : (
               grouped.map(group => (
@@ -504,7 +508,7 @@ export default function MisChatsPage() {
             <div ref={bottomRef} />
           </div>
 
-          {/* Botones de respuesta predefinidos */}
+          {/* Botones de respuesta — solo si hay sesión abierta */}
           {isOpen && (
             <div style={{
               borderTop: '1px solid var(--border)',
@@ -557,7 +561,7 @@ export default function MisChatsPage() {
               Finalizar consulta
             </h3>
             <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--text-muted)' }}>
-              {currentSession?.buyer_org_name} — {currentSession?.product_sku}
+              {currentThread?.productSku}
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>

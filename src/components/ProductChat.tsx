@@ -90,6 +90,7 @@ export default function ProductChat({ productId, productName, onClose }: Props) 
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [sending, setSending] = useState(false)
+  const [chatError, setChatError] = useState<string | null>(null)
 
   // Modal de cierre
   const [showCloseModal, setShowCloseModal] = useState(false)
@@ -208,7 +209,12 @@ export default function ProductChat({ productId, productName, onClose }: Props) 
         body: JSON.stringify({ productId }),
       })
       const data = await res.json()
-      if (!data.sessionId) { setCreatingSession(false); return }
+      if (!data.sessionId) {
+        setChatError(data.error ?? 'No se pudo iniciar la consulta')
+        setCreatingSession(false)
+        return
+      }
+      setChatError(null)
       sid = data.sessionId
       await loadSession()
       setCreatingSession(false)
@@ -459,12 +465,27 @@ export default function ProductChat({ productId, productName, onClose }: Props) 
               <a href="/login" style={{ color: 'var(--accent)', fontWeight: 600 }}>Iniciá sesión</a> para enviar consultas
             </p>
           </div>
-        ) : isClosed ? null : (
+        ) : isClosed ? null : !myOrgId ? (
+          <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+              Tu cuenta no tiene una empresa asignada. Contactá al administrador.
+            </p>
+          </div>
+        ) : (
           <div style={{
             borderTop: '1px solid var(--border)',
             background: 'var(--bg-surface)',
             padding: '14px 18px',
           }}>
+            {chatError && (
+              <div style={{
+                marginBottom: 10, padding: '9px 12px', borderRadius: 9,
+                background: 'rgba(220,53,69,0.08)', border: '1px solid rgba(220,53,69,0.3)',
+                color: '#dc3545', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+                <AlertIcon /> {chatError}
+              </div>
+            )}
             <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Seleccioná tu consulta
             </p>

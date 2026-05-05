@@ -126,7 +126,15 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
 
         {/* Footer — solo Chat */}
         <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.12)' }}>
-          {isLoggedIn ? (
+          {!isLoggedIn ? (
+            <p style={{ width: '100%', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+              <a href="/login">Iniciá sesión</a> para consultar
+            </p>
+          ) : user?.organization?.id && user.organization.id === product.organization_id ? (
+            <p style={{ width: '100%', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', margin: 0, fontStyle: 'italic' }}>
+              Tus productos
+            </p>
+          ) : (
             <button
               onClick={() => setChatOpen(true)}
               style={{
@@ -138,10 +146,6 @@ export default function ProductCard({ product, showOrg }: ProductCardProps) {
             >
               <ChatIcon /> Consultar por chat
             </button>
-          ) : (
-            <p style={{ width: '100%', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-              <a href="/login">Iniciá sesión</a> para consultar
-            </p>
           )}
         </div>
       </div>
