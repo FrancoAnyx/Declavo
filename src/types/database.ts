@@ -87,9 +87,28 @@ export interface ImportRow {
   contact_email?: string
 }
 
+export type ChatSessionStatus = 'open' | 'closed_no_deal' | 'closed_agreed'
+export type ChatMessageFrom  = 'buyer' | 'seller'
+
+export interface ChatSession {
+  id: string
+  product_id: string
+  buyer_org_id: string
+  buyer_user_id: string | null
+  status: ChatSessionStatus
+  sale_price: number | null
+  closed_at: string | null
+  closed_by: string | null
+  last_message_at: string
+  last_message_from: ChatMessageFrom | null
+  reminder_sent_at: string | null
+  created_at: string
+}
+
 export interface ProductMessage {
   id: string
   product_id: string
+  session_id: string | null
   sender_id: string
   sender_org_id: string | null
   body: string
@@ -131,6 +150,7 @@ export type Database = {
       import_history:   { Row: ImportHistory;   Insert: Partial<ImportHistory>;   Update: Partial<ImportHistory> }
       product_messages: { Row: ProductMessage;  Insert: Partial<ProductMessage>;  Update: Partial<ProductMessage> }
       access_requests:  { Row: AccessRequest;   Insert: Partial<AccessRequest>;   Update: Partial<AccessRequest> }
+      chat_sessions:    { Row: ChatSession;     Insert: Partial<ChatSession>;     Update: Partial<ChatSession> }
     }
     Views: {
       catalog_view: { Row: CatalogProduct }

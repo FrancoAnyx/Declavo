@@ -109,14 +109,16 @@ export default function NotificationBell() {
   const initializedReqs                   = useRef(false)
 
   const fetchUnread = useCallback(async () => {
-    if (!orgId) return
-    const { data } = await supabase
+    if (!orgId && !isSuperAdmin) return
+    let query = supabase
       .from('chat_summary')
       .select('id, product_id, product_description, sku, sender_org_name, sender_name, body, created_at, sender_org_id, product_org_id')
-      .eq('product_org_id', orgId)
-      .neq('sender_org_id', orgId)
       .order('created_at', { ascending: false })
-      .limit(30)
+      .limit(50)
+    if (!isSuperAdmin && orgId) {
+      query = query.eq('product_org_id', orgId).neq('sender_org_id', orgId)
+    }
+    const { data } = await query
     if (!data) return
     const msgs: NotifMessage[] = (data as {
       id: string; product_id: string; product_description: string; sku: string;
@@ -162,13 +164,13 @@ export default function NotificationBell() {
   }, [isSuperAdmin, readReqIds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!orgId) return
+    if (!orgId && !isSuperAdmin) return
     fetchUnread()
     const ch = supabase.channel('global-chat-notif')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'product_messages' }, () => fetchUnread())
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [fetchUnread, orgId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchUnread, orgId, isSuperAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!isSuperAdmin) return

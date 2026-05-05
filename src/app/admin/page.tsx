@@ -992,135 +992,125 @@ function ProductosSection() {
 function ChatsSection() {
   const supabase = createClient()
 
-  interface AdminThread {
-    product_id: string
-    sku: string
+  interface AdminSession {
+    id: string
+    status: string
+    sale_price: number | null
+    last_message_at: string
+    last_message_from: string | null
+    buyer_org_name: string
+    product_sku: string
     product_description: string
-    product_org: string
-    last_body: string
-    last_at: string
-    msg_count: number
+    seller_org_name: string
   }
   interface AdminMessage {
     id: string
     body: string
     created_at: string
     sender_org_name: string | null
-    sender_name: string
-    sender_id: string
+    is_buyer: boolean
   }
 
-  const [threads, setThreads]           = useState<AdminThread[]>([])
+  const [sessions, setSessions]         = useState<AdminSession[]>([])
   const [loading, setLoading]           = useState(true)
-  const [activeThread, setActiveThread] = useState<AdminThread | null>(null)
+  const [activeSession, setActiveSession] = useState<AdminSession | null>(null)
   const [messages, setMessages]         = useState<AdminMessage[]>([])
   const [msgLoading, setMsgLoading]     = useState(false)
   const bottomRef                       = useRef<HTMLDivElement>(null)
 
-  const fetchThreads = useCallback(async () => {
+  const loadSessions = useCallback(async () => {
     setLoading(true)
 
-    // Todos los productos con mensajes
-    const { data: msgs } = await supabase
-      .from('product_messages')
-      .select('product_id, body, created_at')
-      .order('created_at', { ascending: false })
+    const { data: chatSessions } = await supabase
+      .from('chat_sessions')
+      .select('id, status, sale_price, last_message_at, last_message_from, buyer_org_id, product_id')
+      .order('last_message_at', { ascending: false })
+      .limit(200)
 
-    if (!msgs || msgs.length === 0) { setLoading(false); return }
+    if (!chatSessions?.length) { setSessions([]); setLoading(false); return }
 
-    const productIds = [...new Set((msgs as { product_id: string }[]).map(m => m.product_id))]
+    const productIds  = [...new Set((chatSessions as { product_id: string }[]).map(s => s.product_id))]
+    const buyerOrgIds = [...new Set((chatSessions as { buyer_org_id: string }[]).map(s => s.buyer_org_id))]
 
-    const { data: products } = await supabase
-      .from('products')
-      .select('id, sku, description, organization_id, organizations(name)')
-      .in('id', productIds)
+    const [{ data: products }, { data: buyerOrgs }] = await Promise.all([
+      supabase.from('products').select('id, sku, description, organizations(name)').in('id', productIds),
+      supabase.from('organizations').select('id, name').in('id', buyerOrgIds),
+    ])
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const prodMap: Record<string, { sku: string; description: string; org: string }> = {}
+    const prodMap: Record<string, { sku: string; description: string; sellerOrg: string }> = {}
     ;(products ?? []).forEach((p: { id: string; sku: string; description: string; organizations: { name: string } | null }) => {
-      prodMap[p.id] = {
-        sku: p.sku,
-        description: p.description,
-        org: p.organizations?.name ?? '—',
-      }
+      prodMap[p.id] = { sku: p.sku, description: p.description, sellerOrg: p.organizations?.name ?? '—' }
     })
+    const orgMap: Record<string, string> = {}
+    ;(buyerOrgs ?? []).forEach((o: { id: string; name: string }) => { orgMap[o.id] = o.name })
 
-    const threadMap: Record<string, AdminThread> = {}
-    ;(msgs as { product_id: string; body: string; created_at: string }[]).forEach(m => {
-      const prod = prodMap[m.product_id]
-      if (!prod) return
-      if (!threadMap[m.product_id]) {
-        threadMap[m.product_id] = {
-          product_id:          m.product_id,
-          sku:                 prod.sku,
-          product_description: prod.description,
-          product_org:         prod.org,
-          last_body:           m.body,
-          last_at:             m.created_at,
-          msg_count:           0,
-        }
-      }
-      threadMap[m.product_id].msg_count++
-    })
-
-    setThreads(Object.values(threadMap).sort((a, b) => new Date(b.last_at).getTime() - new Date(a.last_at).getTime()))
+    setSessions((chatSessions as {
+      id: string; status: string; sale_price: number | null; last_message_at: string;
+      last_message_from: string | null; buyer_org_id: string; product_id: string;
+    }[]).map(s => ({
+      id:                  s.id,
+      status:              s.status,
+      sale_price:          s.sale_price,
+      last_message_at:     s.last_message_at,
+      last_message_from:   s.last_message_from,
+      buyer_org_name:      orgMap[s.buyer_org_id] ?? 'Empresa',
+      product_sku:         prodMap[s.product_id]?.sku ?? '',
+      product_description: prodMap[s.product_id]?.description ?? '',
+      seller_org_name:     prodMap[s.product_id]?.sellerOrg ?? '—',
+    })))
     setLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    fetchThreads()
-    const ch = supabase.channel('admin-chats-threads')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'product_messages' }, () => fetchThreads())
+    loadSessions()
+    const ch = supabase.channel('admin-chats-sessions')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'product_messages' }, () => loadSessions())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_sessions' }, () => loadSessions())
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [fetchThreads])
+  }, [loadSessions])
 
-  const fetchMessages = useCallback(async (productId: string) => {
+  const fetchMessages = useCallback(async (sessionId: string, buyerOrgId?: string) => {
     setMsgLoading(true)
     const { data: rawMsgs } = await supabase
       .from('product_messages')
-      .select('id, sender_id, sender_org_id, body, created_at')
-      .eq('product_id', productId)
+      .select('id, sender_org_id, body, created_at')
+      .eq('session_id', sessionId)
       .order('created_at', { ascending: true })
 
-    if (!rawMsgs || rawMsgs.length === 0) { setMessages([]); setMsgLoading(false); return }
+    if (!rawMsgs?.length) { setMessages([]); setMsgLoading(false); return }
 
-    const senderIds = [...new Set((rawMsgs as { sender_id: string }[]).map(m => m.sender_id))]
-    const orgIds    = [...new Set((rawMsgs as { sender_org_id: string | null }[]).map(m => m.sender_org_id).filter(Boolean))] as string[]
+    const orgIds = [...new Set((rawMsgs as { sender_org_id: string | null }[]).map(m => m.sender_org_id).filter(Boolean))] as string[]
+    const { data: orgs } = orgIds.length
+      ? await supabase.from('organizations').select('id, name').in('id', orgIds)
+      : { data: [] }
 
-    const [{ data: profiles }, { data: orgs }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name').in('id', senderIds),
-      orgIds.length > 0 ? supabase.from('organizations').select('id, name').in('id', orgIds) : Promise.resolve({ data: [] }),
-    ])
-
-    const profileMap: Record<string, string> = {}
-    ;(profiles ?? []).forEach((p: { id: string; full_name: string | null }) => { profileMap[p.id] = p.full_name ?? 'Usuario' })
     const orgMap: Record<string, string> = {}
     ;(orgs ?? []).forEach((o: { id: string; name: string }) => { orgMap[o.id] = o.name })
 
-    setMessages((rawMsgs as { id: string; sender_id: string; sender_org_id: string | null; body: string; created_at: string }[]).map(m => ({
+    setMessages((rawMsgs as { id: string; sender_org_id: string | null; body: string; created_at: string }[]).map(m => ({
       id:              m.id,
       body:            m.body,
       created_at:      m.created_at,
-      sender_id:       m.sender_id,
-      sender_name:     profileMap[m.sender_id] ?? 'Usuario',
       sender_org_name: m.sender_org_id ? (orgMap[m.sender_org_id] ?? null) : null,
+      is_buyer:        !!buyerOrgId && m.sender_org_id === buyerOrgId,
     })))
     setMsgLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!activeThread) return
-    fetchMessages(activeThread.product_id)
-    const ch = supabase.channel(`admin-chat-${activeThread.product_id}`)
+    if (!activeSession) return
+    fetchMessages(activeSession.id)
+    const ch = supabase.channel(`admin-session-${activeSession.id}`)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public',
         table: 'product_messages',
-        filter: `product_id=eq.${activeThread.product_id}`,
-      }, () => fetchMessages(activeThread.product_id))
+        filter: `session_id=eq.${activeSession.id}`,
+      }, () => fetchMessages(activeSession.id))
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [activeThread, fetchMessages]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSession?.id, fetchMessages]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
@@ -1133,72 +1123,117 @@ function ChatsSection() {
   }
   const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 
+  // Group sessions by seller org for display
+  const grouped: Record<string, AdminSession[]> = {}
+  sessions.forEach(s => {
+    if (!grouped[s.seller_org_name]) grouped[s.seller_org_name] = []
+    grouped[s.seller_org_name].push(s)
+  })
+
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 64px - 48px)', overflow: 'hidden', borderRadius: 16, border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
 
-      {/* Lista de hilos */}
-      <div style={{ width: 280, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto', background: 'var(--bg-surface)' }}>
+      {/* Lista de sesiones agrupadas por empresa vendedora */}
+      <div style={{ width: 300, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto', background: 'var(--bg-surface)' }}>
         <div style={{ padding: '18px 16px 12px', borderBottom: '1px solid var(--border)' }}>
           <h1 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Syne, sans-serif' }}>Todos los chats</h1>
-          <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>Visibilidad en tiempo real</p>
+          <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+            {sessions.length} sesiones · {sessions.filter(s => s.status === 'open').length} abiertas
+          </p>
         </div>
 
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
             <Loader2 size={18} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
           </div>
-        ) : threads.length === 0 ? (
+        ) : sessions.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
             <p style={{ fontSize: 12, margin: 0 }}>Sin conversaciones aún</p>
           </div>
         ) : (
-          threads.map(t => (
-            <button
-              key={t.product_id}
-              onClick={() => setActiveThread(t)}
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3,
-                padding: '12px 16px', textAlign: 'left', cursor: 'pointer', border: 'none',
-                borderBottom: '1px solid var(--border)', transition: 'all 0.15s', width: '100%',
-                background: activeThread?.product_id === t.product_id ? 'var(--accent-glow)' : 'transparent',
-                borderLeft: activeThread?.product_id === t.product_id ? '3px solid var(--accent)' : '3px solid transparent',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'baseline' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>{t.sku}</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>{fmtRel(t.last_at)}</span>
+          Object.entries(grouped).map(([sellerOrg, grpSessions]) => (
+            <div key={sellerOrg}>
+              {/* Cabecera de empresa vendedora */}
+              <div style={{
+                padding: '7px 16px', fontSize: 10, fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.7px',
+                color: 'var(--accent)', background: 'var(--accent-glow)',
+                borderBottom: '1px solid var(--border-accent)',
+                position: 'sticky', top: 0,
+              }}>
+                {sellerOrg}
               </div>
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
-                {t.product_description}
-              </p>
-              <p style={{ margin: 0, fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
-                {t.last_body}
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 8, background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                  {t.product_org}
-                </span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.msg_count} msg</span>
-              </div>
-            </button>
+              {grpSessions.map(s => {
+                const isActive = activeSession?.id === s.id
+                const needsReply = s.status === 'open' && s.last_message_from === 'buyer'
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setActiveSession(s)}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3,
+                      padding: '10px 16px', textAlign: 'left', cursor: 'pointer', border: 'none',
+                      borderBottom: '1px solid var(--border)', transition: 'all 0.15s', width: '100%',
+                      background: isActive ? 'var(--accent-glow)' : 'transparent',
+                      borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'baseline' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {s.product_sku}
+                      </span>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0, marginLeft: 6 }}>{fmtRel(s.last_message_at)}</span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                      {s.buyer_org_name}
+                    </p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+                      {s.status === 'closed_agreed' ? (
+                        <span style={{ fontSize: 10, color: '#10b981', fontWeight: 600 }}>
+                          ✓ Acordado{s.sale_price ? ` $${s.sale_price.toLocaleString('es-AR')}` : ''}
+                        </span>
+                      ) : s.status === 'closed_no_deal' ? (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Sin acuerdo</span>
+                      ) : needsReply ? (
+                        <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 600 }}>⏳ Sin respuesta</span>
+                      ) : (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Respondido</span>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
           ))
         )}
       </div>
 
-      {/* Conversación */}
+      {/* Conversación seleccionada */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-base)' }}>
-        {!activeThread ? (
+        {!activeSession ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
-            <p style={{ fontSize: 14, margin: 0, color: 'var(--text-secondary)' }}>Seleccioná una conversación</p>
+            <p style={{ fontSize: 14, margin: 0, color: 'var(--text-secondary)' }}>Seleccioná una sesión</p>
           </div>
         ) : (
           <>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.3px' }}>{activeThread.sku}</p>
-              <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{activeThread.product_description}</p>
-              <p style={{ margin: '1px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>{activeThread.product_org}</p>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.3px' }}>
+                  {activeSession.product_sku} — {activeSession.seller_org_name}
+                </p>
+                <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{activeSession.product_description}</p>
+                <p style={{ margin: '1px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>Comprador: {activeSession.buyer_org_name}</p>
+              </div>
+              {activeSession.status === 'closed_agreed' && activeSession.sale_price && (
+                <div style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', textAlign: 'right' }}>
+                  <p style={{ margin: 0, fontSize: 10, color: '#10b981', fontWeight: 600, textTransform: 'uppercase' }}>Precio acordado</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 16, fontWeight: 700, color: '#10b981' }}>
+                    ${activeSession.sale_price.toLocaleString('es-AR')}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1206,21 +1241,29 @@ function ChatsSection() {
                 <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
                   <Loader2 size={18} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
                 </div>
+              ) : messages.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', paddingTop: 40, fontSize: 13 }}>
+                  Sin mensajes en esta sesión
+                </div>
               ) : (
                 messages.map(m => (
-                  <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginBottom: 12 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 3 }}>
-                      {m.sender_org_name ?? m.sender_name}
+                  <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: m.is_buyer ? 'flex-start' : 'flex-end', marginBottom: 12 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 3, padding: m.is_buyer ? '0 0 0 4px' : '0 4px 0 0' }}>
+                      {m.sender_org_name ?? (m.is_buyer ? 'Comprador' : 'Vendedor')}
                     </span>
                     <div style={{
                       maxWidth: '75%', padding: '10px 14px',
-                      borderRadius: '14px 14px 14px 4px',
-                      background: 'var(--bg-card)', border: '1px solid var(--border)',
-                      color: 'var(--text-primary)', fontSize: 13, lineHeight: 1.5, wordBreak: 'break-word',
+                      borderRadius: m.is_buyer ? '14px 14px 14px 4px' : '14px 14px 4px 14px',
+                      background: m.is_buyer ? 'var(--bg-card)' : 'var(--accent)',
+                      border: m.is_buyer ? '1px solid var(--border)' : 'none',
+                      color: m.is_buyer ? 'var(--text-primary)' : '#fff',
+                      fontSize: 13, lineHeight: 1.5, wordBreak: 'break-word',
                     }}>
                       {m.body}
                     </div>
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>{fmtTime(m.created_at)}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3, padding: m.is_buyer ? '0 0 0 4px' : '0 4px 0 0' }}>
+                      {fmtTime(m.created_at)}
+                    </span>
                   </div>
                 ))
               )}
