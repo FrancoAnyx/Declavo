@@ -1,15 +1,15 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useProfile } from '@/hooks/useProfile'
 import {
   LayoutGrid, Building2, Users, Mail, Package,
-  Plus, Send, X, Check, Loader2, Copy, Pencil, Inbox,
+  Plus, Send, X, Check, Loader2, Copy, Pencil, Inbox, MessageSquare,
 } from 'lucide-react'
 import type { Organization, Profile, Invitation, AccessRequest } from '@/types/database'
 import clsx from 'clsx'
 
-type Section = 'overview' | 'empresas' | 'usuarios' | 'invitaciones' | 'productos' | 'solicitudes'
+type Section = 'overview' | 'empresas' | 'usuarios' | 'invitaciones' | 'productos' | 'solicitudes' | 'chats'
 
 /* ── Estilos inline temáticos (sin bg-white hardcoded) ── */
 const S = {
@@ -119,6 +119,9 @@ export default function AdminPage() {
         <button onClick={() => setSection('productos')} className={clsx('sidebar-item', section === 'productos' && 'sidebar-item-active')}>
           <Package size={14} />Productos
         </button>
+        <button onClick={() => setSection('chats')} className={clsx('sidebar-item', section === 'chats' && 'sidebar-item-active')}>
+          <MessageSquare size={14} />Chats
+        </button>
       </aside>
 
       <div style={{ flex: 1, padding: 24, overflowX: 'hidden' }}>
@@ -128,6 +131,7 @@ export default function AdminPage() {
         {section === 'invitaciones' && <InvitacionesSection />}
         {section === 'solicitudes'  && <SolicitudesSection />}
         {section === 'productos'    && <ProductosSection />}
+        {section === 'chats'        && <ChatsSection />}
       </div>
     </div>
   )
@@ -220,7 +224,7 @@ function EmpresasSection() {
   const [showModal, setShowModal] = useState(false)
   const [editOrg, setEditOrg]   = useState<Organization | null>(null)
   const [saving, setSaving]     = useState(false)
-  const [form, setForm]         = useState({ name: '', legal_names: '', contact_email: '', contact_whatsapp: '' })
+  const [form, setForm]         = useState({ name: '', legal_names: '', contact_email: '' })
   const [error, setError]       = useState('')
 
   const load = useCallback(() => {
@@ -244,7 +248,6 @@ function EmpresasSection() {
       name: o.name,
       legal_names: (o.legal_names ?? []).join('\n'),
       contact_email: o.contact_email ?? '',
-      contact_whatsapp: o.contact_whatsapp ?? '',
     })
     setError('')
     setShowModal(true)
@@ -258,7 +261,6 @@ function EmpresasSection() {
       name: form.name.trim(),
       legal_names: form.legal_names.split('\n').map(s => s.trim()).filter(Boolean),
       contact_email: form.contact_email.trim(),
-      contact_whatsapp: form.contact_whatsapp || null,
     }
     if (editOrg) {
       const { error: e } = await supabase.from('organizations').update(payload).eq('id', editOrg.id)
@@ -339,15 +341,9 @@ function EmpresasSection() {
                 <label style={S.label}>Razones sociales (una por línea)</label>
                 <textarea style={{ ...S.input, height: 72, resize: 'vertical' }} value={form.legal_names} onChange={e => setForm(f => ({ ...f, legal_names: e.target.value }))} placeholder={'TechDistrib. SRL\nTechImport SA'} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={S.label}>Email de contacto *</label>
-                  <input type="email" style={S.input} value={form.contact_email} onChange={e => setForm(f => ({ ...f, contact_email: e.target.value }))} placeholder="admin@empresa.com" />
-                </div>
-                <div>
-                  <label style={S.label}>WhatsApp</label>
-                  <input style={S.input} value={form.contact_whatsapp} onChange={e => setForm(f => ({ ...f, contact_whatsapp: e.target.value }))} placeholder="+549 11 0000-0000" />
-                </div>
+              <div>
+                <label style={S.label}>Email de contacto *</label>
+                <input type="email" style={S.input} value={form.contact_email} onChange={e => setForm(f => ({ ...f, contact_email: e.target.value }))} placeholder="admin@empresa.com" />
               </div>
               {error && <div style={S.error}>{error}</div>}
             </div>
@@ -984,6 +980,253 @@ function ProductosSection() {
               {products.length === 0 && <tr><td colSpan={6} className="table-td" style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>Sin productos.</td></tr>}
             </tbody>
           </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────── */
+/* CHATS — visibilidad total para el admin                    */
+/* ────────────────────────────────────────────────────────── */
+function ChatsSection() {
+  const supabase = createClient()
+
+  interface AdminThread {
+    product_id: string
+    sku: string
+    product_description: string
+    product_org: string
+    last_body: string
+    last_at: string
+    msg_count: number
+  }
+  interface AdminMessage {
+    id: string
+    body: string
+    created_at: string
+    sender_org_name: string | null
+    sender_name: string
+    sender_id: string
+  }
+
+  const [threads, setThreads]           = useState<AdminThread[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [activeThread, setActiveThread] = useState<AdminThread | null>(null)
+  const [messages, setMessages]         = useState<AdminMessage[]>([])
+  const [msgLoading, setMsgLoading]     = useState(false)
+  const bottomRef                       = useRef<HTMLDivElement>(null)
+
+  const fetchThreads = useCallback(async () => {
+    setLoading(true)
+
+    // Todos los productos con mensajes
+    const { data: msgs } = await supabase
+      .from('product_messages')
+      .select('product_id, body, created_at')
+      .order('created_at', { ascending: false })
+
+    if (!msgs || msgs.length === 0) { setLoading(false); return }
+
+    const productIds = [...new Set((msgs as { product_id: string }[]).map(m => m.product_id))]
+
+    const { data: products } = await supabase
+      .from('products')
+      .select('id, sku, description, organization_id, organizations(name)')
+      .in('id', productIds)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const prodMap: Record<string, { sku: string; description: string; org: string }> = {}
+    ;(products ?? []).forEach((p: { id: string; sku: string; description: string; organizations: { name: string } | null }) => {
+      prodMap[p.id] = {
+        sku: p.sku,
+        description: p.description,
+        org: p.organizations?.name ?? '—',
+      }
+    })
+
+    const threadMap: Record<string, AdminThread> = {}
+    ;(msgs as { product_id: string; body: string; created_at: string }[]).forEach(m => {
+      const prod = prodMap[m.product_id]
+      if (!prod) return
+      if (!threadMap[m.product_id]) {
+        threadMap[m.product_id] = {
+          product_id:          m.product_id,
+          sku:                 prod.sku,
+          product_description: prod.description,
+          product_org:         prod.org,
+          last_body:           m.body,
+          last_at:             m.created_at,
+          msg_count:           0,
+        }
+      }
+      threadMap[m.product_id].msg_count++
+    })
+
+    setThreads(Object.values(threadMap).sort((a, b) => new Date(b.last_at).getTime() - new Date(a.last_at).getTime()))
+    setLoading(false)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchThreads()
+    const ch = supabase.channel('admin-chats-threads')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'product_messages' }, () => fetchThreads())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [fetchThreads])
+
+  const fetchMessages = useCallback(async (productId: string) => {
+    setMsgLoading(true)
+    const { data: rawMsgs } = await supabase
+      .from('product_messages')
+      .select('id, sender_id, sender_org_id, body, created_at')
+      .eq('product_id', productId)
+      .order('created_at', { ascending: true })
+
+    if (!rawMsgs || rawMsgs.length === 0) { setMessages([]); setMsgLoading(false); return }
+
+    const senderIds = [...new Set((rawMsgs as { sender_id: string }[]).map(m => m.sender_id))]
+    const orgIds    = [...new Set((rawMsgs as { sender_org_id: string | null }[]).map(m => m.sender_org_id).filter(Boolean))] as string[]
+
+    const [{ data: profiles }, { data: orgs }] = await Promise.all([
+      supabase.from('profiles').select('id, full_name').in('id', senderIds),
+      orgIds.length > 0 ? supabase.from('organizations').select('id, name').in('id', orgIds) : Promise.resolve({ data: [] }),
+    ])
+
+    const profileMap: Record<string, string> = {}
+    ;(profiles ?? []).forEach((p: { id: string; full_name: string | null }) => { profileMap[p.id] = p.full_name ?? 'Usuario' })
+    const orgMap: Record<string, string> = {}
+    ;(orgs ?? []).forEach((o: { id: string; name: string }) => { orgMap[o.id] = o.name })
+
+    setMessages((rawMsgs as { id: string; sender_id: string; sender_org_id: string | null; body: string; created_at: string }[]).map(m => ({
+      id:              m.id,
+      body:            m.body,
+      created_at:      m.created_at,
+      sender_id:       m.sender_id,
+      sender_name:     profileMap[m.sender_id] ?? 'Usuario',
+      sender_org_name: m.sender_org_id ? (orgMap[m.sender_org_id] ?? null) : null,
+    })))
+    setMsgLoading(false)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!activeThread) return
+    fetchMessages(activeThread.product_id)
+    const ch = supabase.channel(`admin-chat-${activeThread.product_id}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public',
+        table: 'product_messages',
+        filter: `product_id=eq.${activeThread.product_id}`,
+      }, () => fetchMessages(activeThread.product_id))
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [activeThread, fetchMessages]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+
+  const fmtRel  = (iso: string) => {
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+    if (diff < 1)    return 'ahora'
+    if (diff < 60)   return `${diff} min`
+    if (diff < 1440) return `${Math.floor(diff / 60)} h`
+    return new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+  }
+  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <div style={{ display: 'flex', height: 'calc(100vh - 64px - 48px)', overflow: 'hidden', borderRadius: 16, border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+
+      {/* Lista de hilos */}
+      <div style={{ width: 280, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto', background: 'var(--bg-surface)' }}>
+        <div style={{ padding: '18px 16px 12px', borderBottom: '1px solid var(--border)' }}>
+          <h1 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Syne, sans-serif' }}>Todos los chats</h1>
+          <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>Visibilidad en tiempo real</p>
+        </div>
+
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+            <Loader2 size={18} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
+          </div>
+        ) : threads.length === 0 ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
+            <p style={{ fontSize: 12, margin: 0 }}>Sin conversaciones aún</p>
+          </div>
+        ) : (
+          threads.map(t => (
+            <button
+              key={t.product_id}
+              onClick={() => setActiveThread(t)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3,
+                padding: '12px 16px', textAlign: 'left', cursor: 'pointer', border: 'none',
+                borderBottom: '1px solid var(--border)', transition: 'all 0.15s', width: '100%',
+                background: activeThread?.product_id === t.product_id ? 'var(--accent-glow)' : 'transparent',
+                borderLeft: activeThread?.product_id === t.product_id ? '3px solid var(--accent)' : '3px solid transparent',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'baseline' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>{t.sku}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>{fmtRel(t.last_at)}</span>
+              </div>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                {t.product_description}
+              </p>
+              <p style={{ margin: 0, fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                {t.last_body}
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 8, background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                  {t.product_org}
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.msg_count} msg</span>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+
+      {/* Conversación */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-base)' }}>
+        {!activeThread ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
+            <p style={{ fontSize: 14, margin: 0, color: 'var(--text-secondary)' }}>Seleccioná una conversación</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.3px' }}>{activeThread.sku}</p>
+              <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{activeThread.product_description}</p>
+              <p style={{ margin: '1px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>{activeThread.product_org}</p>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {msgLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+                  <Loader2 size={18} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
+                </div>
+              ) : (
+                messages.map(m => (
+                  <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginBottom: 12 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 3 }}>
+                      {m.sender_org_name ?? m.sender_name}
+                    </span>
+                    <div style={{
+                      maxWidth: '75%', padding: '10px 14px',
+                      borderRadius: '14px 14px 14px 4px',
+                      background: 'var(--bg-card)', border: '1px solid var(--border)',
+                      color: 'var(--text-primary)', fontSize: 13, lineHeight: 1.5, wordBreak: 'break-word',
+                    }}>
+                      {m.body}
+                    </div>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>{fmtTime(m.created_at)}</span>
+                  </div>
+                ))
+              )}
+              <div ref={bottomRef} />
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -183,6 +183,18 @@ export default function GuestBanner() {
     setSending(false)
     if (e) { setError('No se pudo enviar la solicitud. Intentá de nuevo.'); return }
 
+    // Notificar al admin por email (fire & forget)
+    fetch('/api/notify-admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name:      form.name.trim(),
+        email:     form.email.trim().toLowerCase(),
+        company:   form.company.trim() || undefined,
+        requestId,
+      }),
+    }).catch(() => {})
+
     const newRequest: StoredRequest = {
       id: requestId,
       email: form.email.trim().toLowerCase(),
