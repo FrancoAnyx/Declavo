@@ -26,61 +26,8 @@ const CATS   = ['Notebooks', 'Desktops', 'Monitores', 'Impresoras', 'Networking'
 /* ─── Generador plantilla XLSX nativo ── */
 function generateTemplateXlsx(): Blob {
   const headers = ['SKU', 'Descripcion', 'Marca', 'Categoria', 'Stock', 'Precio', 'WhatsApp', 'Email']
-  const example = ['SKU-HP-001', 'HP EliteBook 840 G9 Core i7', 'HP', 'Notebooks', '5', '1500000', '+549 11 0000-0000', 'ventas@empresa.com']
-
-  const xmlWorkbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Productos" sheetId="1" r:id="rId1"/></sheets></workbook>`
-  const xmlSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1">${headers.map((h,i)=>`<c r="${String.fromCharCode(65+i)}1" t="inlineStr"><is><t>${h}</t></is></c>`).join('')}</row><row r="2">${example.map((v,i)=>`<c r="${String.fromCharCode(65+i)}2" t="inlineStr"><is><t>${v}</t></is></c>`).join('')}</row></sheetData></worksheet>`
-  const xmlRelWorkbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`
-  const xmlRelRoot     = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`
-  const xmlContentTypes= `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`
-
-  function strToBytes(s: string) { return new TextEncoder().encode(s) }
-  function u16le(n: number) { return new Uint8Array([n&0xff,(n>>8)&0xff]) }
-  function u32le(n: number) { return new Uint8Array([n&0xff,(n>>8)&0xff,(n>>16)&0xff,(n>>24)&0xff]) }
-  function crc32(data: Uint8Array) {
-    const table = new Uint32Array(256)
-    for(let i=0;i<256;i++){let k=i;for(let j=0;j<8;j++)k=k&1?(k>>>1)^0xedb88320:k>>>1;table[i]=k>>>0}
-    let c=0xffffffff;for(const b of data)c=(c>>>8)^table[(c^b)&0xff];return(~c)>>>0
-  }
-  function concat(arrs: Uint8Array[]) {
-    const total=arrs.reduce((s,a)=>s+a.length,0);const out=new Uint8Array(total);let pos=0
-    for(const a of arrs){out.set(a,pos);pos+=a.length};return out
-  }
-
-  const files=[
-    {name:'[Content_Types].xml',data:strToBytes(xmlContentTypes)},
-    {name:'_rels/.rels',        data:strToBytes(xmlRelRoot)},
-    {name:'xl/workbook.xml',    data:strToBytes(xmlWorkbook)},
-    {name:'xl/_rels/workbook.xml.rels',data:strToBytes(xmlRelWorkbook)},
-    {name:'xl/worksheets/sheet1.xml',  data:strToBytes(xmlSheet)},
-  ]
-  const parts:Uint8Array[]=[],cdEntries:Uint8Array[]=[];let offset=0
-  for(const f of files){
-    const nb=strToBytes(f.name),crc=crc32(f.data)
-    const lh=new Uint8Array([0x50,0x4b,0x03,0x04,0x14,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,...u32le(crc),...u32le(f.data.length),...u32le(f.data.length),...u16le(nb.length),0x00,0x00,...nb])
-    const cd=new Uint8Array([0x50,0x4b,0x01,0x02,0x14,0x00,0x14,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,...u32le(crc),...u32le(f.data.length),...u32le(f.data.length),...u16le(nb.length),0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,...u32le(offset),...nb])
-    parts.push(lh,f.data);cdEntries.push(cd);offset+=lh.length+f.data.length
-  }
-  const cdData=concat(cdEntries)
-  const eocd=new Uint8Array([0x50,0x4b,0x05,0x06,0x00,0x00,0x00,0x00,...u16le(files.length),...u16le(files.length),...u32le(cdData.length),...u32le(offset),0x00,0x00])
-  return new Blob([concat([...parts,cdData,eocd])],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
-}
-
-function downloadTemplate() {
-  const blob=/**
- * Genera un archivo .xlsx con formato visual mejorado:
- * - Encabezados con fondo azul/indigo y texto blanco
- * - Anchos de columna ajustados
- * - Fila de ejemplo completa
- * - Fila de instrucciones
- * 
- * Reemplazar la función generateTemplateXlsx en src/app/mis-productos/page.tsx
- */
-
-function generateTemplateXlsx(): Blob {
-  const headers = ['SKU', 'Descripcion', 'Marca', 'Categoria', 'Stock', 'Precio', 'WhatsApp', 'Email']
   const example = ['SKU-HP-001', 'HP EliteBook 840 G9 Core i7 16GB 512GB', 'HP', 'Notebooks', '5', '1500000', '+549 11 0000-0000', 'ventas@empresa.com']
-  const colWidths = [15, 45, 15, 18, 8, 12, 20, 28] // en caracteres aprox.
+  const colWidths = [15, 45, 15, 18, 8, 12, 20, 28]
 
   /* ── Shared strings ── */
   const allStrings = [...headers, ...example,
@@ -187,8 +134,11 @@ function generateTemplateXlsx(): Blob {
   const cdData = concat(cdEntries)
   const eocd = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, ...u16le(files.length), ...u16le(files.length), ...u32le(cdData.length), ...u32le(offset), 0x00, 0x00])
   return new Blob([concat([...parts, cdData, eocd])], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-}Xlsx(),url=URL.createObjectURL(blob),a=document.createElement('a')
-  a.href=url;a.download='plantilla-declavo.xlsx';a.click();URL.revokeObjectURL(url)
+}
+
+function downloadTemplate() {
+  const blob = generateTemplateXlsx(), url = URL.createObjectURL(blob), a = document.createElement('a')
+  a.href = url; a.download = 'plantilla-declavo.xlsx'; a.click(); URL.revokeObjectURL(url)
 }
 
 /* ─── Parser XLSX nativo ── */

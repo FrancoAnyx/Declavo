@@ -106,16 +106,31 @@ export interface CatalogProduct extends Product {
   contact_whatsapp: string | null
 }
 
+export type AccessRequestStatus = 'pending' | 'approved' | 'rejected'
+
+export interface AccessRequest {
+  id: string
+  name: string
+  email: string
+  company: string | null
+  message: string | null
+  status: AccessRequestStatus
+  created_at: string
+  processed_at: string | null
+  processed_by: string | null
+}
+
 export type Database = {
   public: {
     Tables: {
-      organizations:   { Row: Organization;    Insert: Partial<Organization>;    Update: Partial<Organization> }
-      profiles:        { Row: Profile;         Insert: Partial<Profile>;         Update: Partial<Profile> }
-      products:        { Row: Product;         Insert: Partial<Product>;         Update: Partial<Product> }
-      invitations:     { Row: Invitation;      Insert: Partial<Invitation>;      Update: Partial<Invitation> }
-      contact_requests:{ Row: ContactRequest;  Insert: Partial<ContactRequest>;  Update: Partial<ContactRequest> }
-      import_history:  { Row: ImportHistory;   Insert: Partial<ImportHistory>;   Update: Partial<ImportHistory> }
-      product_messages:{ Row: ProductMessage;  Insert: Partial<ProductMessage>;  Update: Partial<ProductMessage> }
+      organizations:    { Row: Organization;    Insert: Partial<Organization>;    Update: Partial<Organization> }
+      profiles:         { Row: Profile;         Insert: Partial<Profile>;         Update: Partial<Profile> }
+      products:         { Row: Product;         Insert: Partial<Product>;         Update: Partial<Product> }
+      invitations:      { Row: Invitation;      Insert: Partial<Invitation>;      Update: Partial<Invitation> }
+      contact_requests: { Row: ContactRequest;  Insert: Partial<ContactRequest>;  Update: Partial<ContactRequest> }
+      import_history:   { Row: ImportHistory;   Insert: Partial<ImportHistory>;   Update: Partial<ImportHistory> }
+      product_messages: { Row: ProductMessage;  Insert: Partial<ProductMessage>;  Update: Partial<ProductMessage> }
+      access_requests:  { Row: AccessRequest;   Insert: Partial<AccessRequest>;   Update: Partial<AccessRequest> }
     }
     Views: {
       catalog_view: { Row: CatalogProduct }

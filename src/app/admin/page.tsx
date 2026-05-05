@@ -4,12 +4,12 @@ import { createClient } from '@/lib/supabase/client'
 import { useProfile } from '@/hooks/useProfile'
 import {
   LayoutGrid, Building2, Users, Mail, Package,
-  Plus, Send, X, Check, Loader2, Copy, Pencil,
+  Plus, Send, X, Check, Loader2, Copy, Pencil, Inbox,
 } from 'lucide-react'
-import type { Organization, Profile, Invitation } from '@/types/database'
+import type { Organization, Profile, Invitation, AccessRequest } from '@/types/database'
 import clsx from 'clsx'
 
-type Section = 'overview' | 'empresas' | 'usuarios' | 'invitaciones' | 'productos'
+type Section = 'overview' | 'empresas' | 'usuarios' | 'invitaciones' | 'productos' | 'solicitudes'
 
 /* ── Estilos inline temáticos (sin bg-white hardcoded) ── */
 const S = {
@@ -64,8 +64,28 @@ const S = {
 }
 
 export default function AdminPage() {
+  const supabase = createClient()
   const { user, loading: profileLoading } = useProfile()
   const [section, setSection] = useState<Section>('overview')
+
+  useEffect(() => {
+    const s = new URLSearchParams(window.location.search).get('s') as Section | null
+    if (s) setSection(s)
+  }, [])
+  const [pendingRequests, setPendingRequests] = useState(0)
+
+  useEffect(() => {
+    if (user?.profile?.role !== 'super_admin') return
+    supabase.from('access_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+      .then(({ count }) => setPendingRequests(count ?? 0))
+    const ch = supabase.channel('access-requests-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'access_requests' }, () => {
+        supabase.from('access_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+          .then(({ count }) => setPendingRequests(count ?? 0))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [user?.profile?.role]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (profileLoading) return <div className="flex items-center justify-center h-64"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--text-muted)' }} /></div>
   if (user?.profile?.role !== 'super_admin') return <div className="p-8 text-center" style={{ color: 'var(--text-muted)' }}>Acceso denegado.</div>
@@ -85,6 +105,15 @@ export default function AdminPage() {
             {icon}{label}
           </button>
         ))}
+        {/* Solicitudes con badge de pendientes */}
+        <button onClick={() => setSection('solicitudes')} className={clsx('sidebar-item', section === 'solicitudes' && 'sidebar-item-active')} style={{ justifyContent: 'space-between' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Inbox size={14} />Solicitudes</span>
+          {pendingRequests > 0 && (
+            <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--accent)', color: '#fff', borderRadius: 99, padding: '1px 6px', lineHeight: '16px' }}>
+              {pendingRequests}
+            </span>
+          )}
+        </button>
         <div style={S.divider} />
         <span style={S.sectionLabel}>Catálogo</span>
         <button onClick={() => setSection('productos')} className={clsx('sidebar-item', section === 'productos' && 'sidebar-item-active')}>
@@ -97,6 +126,7 @@ export default function AdminPage() {
         {section === 'empresas'     && <EmpresasSection />}
         {section === 'usuarios'     && <UsuariosSection />}
         {section === 'invitaciones' && <InvitacionesSection />}
+        {section === 'solicitudes'  && <SolicitudesSection />}
         {section === 'productos'    && <ProductosSection />}
       </div>
     </div>
@@ -652,6 +682,256 @@ function InvitacionesSection() {
               {tab === 'pending' ? 'Sin invitaciones pendientes.' : tab === 'accepted' ? 'Sin invitaciones aceptadas.' : 'Sin invitaciones expiradas.'}
             </p>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────── */
+/* SOLICITUDES DE ACCESO                                      */
+/* ────────────────────────────────────────────────────────── */
+function SolicitudesSection() {
+  const supabase = createClient()
+  const { user } = useProfile()
+  const [requests, setRequests] = useState<AccessRequest[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [tab, setTab]           = useState<'pending' | 'approved' | 'rejected'>('pending')
+  const [orgs, setOrgs]         = useState<Organization[]>([])
+  const [processing, setProcessing] = useState<string | null>(null)
+
+  const [approveModal, setApproveModal] = useState<AccessRequest | null>(null)
+  const [invForm, setInvForm]     = useState({ org_id: '', role: 'member' as 'member' | 'org_admin' })
+  const [invSaving, setInvSaving] = useState(false)
+  const [invError, setInvError]   = useState('')
+  const [approveSuccess, setApproveSuccess] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('access_requests').select('*').order('created_at', { ascending: false })
+    setRequests((data ?? []) as AccessRequest[])
+    setLoading(false)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    load()
+    supabase.from('organizations').select('id,name').eq('is_active', true)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .then(({ data }) => setOrgs((data ?? []) as any))
+
+    const ch = supabase.channel('solicitudes-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'access_requests' }, () => load())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [load])
+
+  async function handleReject(req: AccessRequest) {
+    if (!confirm(`¿Rechazar la solicitud de ${req.name}?`)) return
+    setProcessing(req.id)
+    await supabase.from('access_requests').update({
+      status: 'rejected',
+      processed_at: new Date().toISOString(),
+      processed_by: user?.id ?? null,
+    }).eq('id', req.id)
+    setProcessing(null)
+    load()
+  }
+
+  function openApprove(req: AccessRequest) {
+    setApproveModal(req)
+    setInvForm({ org_id: '', role: 'member' })
+    setInvError('')
+    setApproveSuccess(false)
+  }
+
+  async function handleApprove() {
+    if (!approveModal) return
+    if (!invForm.org_id) { setInvError('Seleccioná una empresa.'); return }
+    setInvSaving(true)
+    setInvError('')
+
+    const res = await fetch('/api/approve-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestId: approveModal.id,
+        email:     approveModal.email,
+        name:      approveModal.name,
+        orgId:     invForm.org_id,
+        role:      invForm.role,
+      }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      setInvError((err as { error?: string }).error ?? 'Error al procesar la solicitud.')
+      setInvSaving(false)
+      return
+    }
+
+    setInvSaving(false)
+    setApproveSuccess(true)
+    load()
+  }
+
+  function fmt(iso: string) {
+    const d = new Date(iso)
+    const diff = Math.floor((Date.now() - d.getTime()) / 1000)
+    if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`
+    if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`
+    return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  const pending  = requests.filter(r => r.status === 'pending')
+  const approved = requests.filter(r => r.status === 'approved')
+  const rejected = requests.filter(r => r.status === 'rejected')
+  const shown    = tab === 'pending' ? pending : tab === 'approved' ? approved : rejected
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Solicitudes de acceso</h1>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>Usuarios que pidieron acceso a la plataforma</p>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10, padding: 4, width: 'fit-content' }}>
+        {([
+          ['pending',  `Pendientes (${pending.length})`],
+          ['approved', `Aprobadas (${approved.length})`],
+          ['rejected', `Rechazadas (${rejected.length})`],
+        ] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} style={{
+            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 500, border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+            background: tab === id ? 'var(--bg-card)' : 'transparent',
+            color: tab === id ? 'var(--text-primary)' : 'var(--text-muted)',
+            boxShadow: tab === id ? 'var(--shadow-card)' : 'none',
+          }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 48, textAlign: 'center' }}><Loader2 size={18} className="animate-spin" style={{ color: 'var(--text-muted)', margin: 'auto' }} /></div>
+      ) : shown.length === 0 ? (
+        <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <Inbox size={32} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
+          <p style={{ margin: 0, fontSize: 13 }}>
+            {tab === 'pending' ? 'Sin solicitudes pendientes.' : tab === 'approved' ? 'Sin solicitudes aprobadas.' : 'Sin solicitudes rechazadas.'}
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {shown.map(req => (
+            <div key={req.id} className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              {/* Avatar */}
+              <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: 'var(--accent-glow)', border: '1px solid var(--border-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: 'var(--accent)' }}>
+                {req.name.slice(0, 2).toUpperCase()}
+              </div>
+
+              {/* Info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{req.name}</span>
+                  {req.company && <span className="badge badge-gray">{req.company}</span>}
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmt(req.created_at)}</span>
+                </div>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--accent)' }}>{req.email}</p>
+                {req.message && (
+                  <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{req.message}</p>
+                )}
+              </div>
+
+              {/* Acciones */}
+              {tab === 'pending' && (
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <button
+                    onClick={() => handleReject(req)}
+                    disabled={processing === req.id}
+                    className="btn"
+                    style={{ fontSize: 12, color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                  >
+                    <X size={12} /> Rechazar
+                  </button>
+                  <button
+                    onClick={() => openApprove(req)}
+                    disabled={processing === req.id}
+                    className="btn btn-primary"
+                    style={{ fontSize: 12 }}
+                  >
+                    <Check size={12} /> Aprobar
+                  </button>
+                </div>
+              )}
+              {tab === 'approved' && (
+                <span className="badge badge-green" style={{ flexShrink: 0 }}>Aprobada</span>
+              )}
+              {tab === 'rejected' && (
+                <span className="badge badge-gray" style={{ flexShrink: 0 }}>Rechazada</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal de aprobación */}
+      {approveModal && (
+        <div style={S.modalOverlay} onClick={e => e.target === e.currentTarget && !approveSuccess && setApproveModal(null)}>
+          <div style={S.modal}>
+            <div style={S.modalHeader}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Aprobar solicitud</h2>
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>{approveModal.name} · {approveModal.email}</p>
+              </div>
+              {!approveSuccess && <button onClick={() => setApproveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={16} /></button>}
+            </div>
+
+            {approveSuccess ? (
+              <div style={{ ...S.modalBody, alignItems: 'center', textAlign: 'center' }}>
+                <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--success-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)', margin: '0 auto' }}>
+                  <Check size={22} />
+                </div>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>¡Acceso otorgado!</p>
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                  Se envió un email de activación a <strong style={{ color: 'var(--text-primary)' }}>{approveModal.email}</strong>.<br />
+                  Cuando lo reciba podrá completar el registro.
+                </p>
+              </div>
+            ) : (
+              <div style={S.modalBody}>
+                <div>
+                  <label style={S.label}>Empresa *</label>
+                  <select style={S.select} value={invForm.org_id} onChange={e => setInvForm(f => ({ ...f, org_id: e.target.value }))}>
+                    <option value="">— Seleccionar —</option>
+                    {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={S.label}>Rol</label>
+                  <select style={S.select} value={invForm.role} onChange={e => setInvForm(f => ({ ...f, role: e.target.value as 'member' | 'org_admin' }))}>
+                    <option value="member">Miembro (lectura)</option>
+                    <option value="org_admin">Administrador de empresa</option>
+                  </select>
+                </div>
+                {invError && <div style={S.error}>{invError}</div>}
+              </div>
+            )}
+
+            <div style={S.modalFooter}>
+              {approveSuccess ? (
+                <button onClick={() => setApproveModal(null)} className="btn btn-primary">Listo</button>
+              ) : (
+                <>
+                  <button onClick={() => setApproveModal(null)} className="btn">Cancelar</button>
+                  <button onClick={handleApprove} disabled={invSaving} className="btn btn-primary">
+                    {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                    Otorgar acceso
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
