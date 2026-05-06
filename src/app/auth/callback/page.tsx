@@ -14,21 +14,37 @@ function AuthCallbackInner() {
     const next     = searchParams.get('next') ?? '/catalogo'
 
     async function handle() {
-      // PKCE flow: code in query params
+      // ── 1. PKCE flow: ?code= en query params ────────────────────────────
       const code = searchParams.get('code')
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) { router.replace(next); return }
+        // Si falla el intercambio PKCE, igual revisar si ya hay sesión
       }
 
-      // Implicit flow: hash tokens (#access_token=…)
-      // createBrowserClient processes the hash automatically on init.
-      // We wait one tick to let it settle.
-      await new Promise(r => setTimeout(r, 400))
+      // ── 2. Implicit flow: #access_token= en el hash ──────────────────────
+      // @supabase/ssr NO detecta los tokens del hash automáticamente.
+      // Hay que extraerlos y llamar setSession() explícitamente.
+      const hash = typeof window !== 'undefined' ? window.location.hash : ''
+      if (hash.includes('access_token=')) {
+        const hp = new URLSearchParams(hash.replace(/^#/, ''))
+        const accessToken  = hp.get('access_token')
+        const refreshToken = hp.get('refresh_token') ?? ''
+        if (accessToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token:  accessToken,
+            refresh_token: refreshToken,
+          })
+          if (!error) { router.replace(next); return }
+          console.error('[auth/callback] setSession error:', error.message)
+        }
+      }
+
+      // ── 3. Revisar si ya existe una sesión activa (p.ej. tab duplicado) ──
       const { data: { session } } = await supabase.auth.getSession()
       if (session) { router.replace(next); return }
 
-      // Nothing worked
+      // Nada funcionó
       setFailed(true)
       setTimeout(() => router.replace('/'), 3500)
     }
