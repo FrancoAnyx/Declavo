@@ -44,7 +44,9 @@ export async function GET(req: NextRequest) {
       body: JSON.stringify({
         type: 'magiclink',
         email: request.email,
-        redirect_to: `${origin}/auth/callback?next=/catalogo`,
+        // Redirigir a /set-password para que el usuario establezca su contraseña
+        // en el primer ingreso. El set-password page tiene un botón "Omitir".
+        redirect_to: `${origin}/auth/callback?next=/set-password`,
       }),
     })
 
