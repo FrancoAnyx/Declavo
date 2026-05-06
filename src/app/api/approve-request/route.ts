@@ -92,41 +92,56 @@ export async function POST(req: NextRequest) {
     }),
   })
 
-  const linkData = await linkRes.json().catch(() => ({}))
-  const actionLink: string | undefined = linkData?.action_link
+  const rawText = await linkRes.text()
+  let linkData: Record<string, unknown> = {}
+  try { linkData = JSON.parse(rawText) } catch { /* non-JSON */ }
 
-  // 5. Enviar email al usuario con el link de acceso
-  if (actionLink) {
-    await sendEmail({
-      to:      email,
-      subject: '¡Tu acceso a Declavo fue aprobado!',
-      html: `
-        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#0f1020;color:#e0e0f0;border-radius:16px;">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;">
-            <span style="width:10px;height:10px;border-radius:50%;background:#7c6ff7;display:inline-block;box-shadow:0 0 12px #7c6ff7;"></span>
-            <span style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">Declavo</span>
-          </div>
-          <h1 style="font-size:20px;font-weight:700;margin:0 0 10px;">¡Hola, ${name}! Tu acceso fue aprobado</h1>
-          <p style="font-size:14px;color:#9898b8;line-height:1.6;margin:0 0 24px;">
-            Tu solicitud de acceso a la plataforma Declavo fue revisada y aprobada.<br/>
-            Hacé clic en el botón de abajo para crear tu contraseña e ingresar.
-          </p>
-          <a href="${actionLink}" style="display:inline-block;padding:12px 28px;background:#7c6ff7;color:#fff;border-radius:10px;font-size:15px;font-weight:600;text-decoration:none;">
-            Crear contraseña e ingresar →
-          </a>
-          <p style="font-size:12px;color:#5a5a7a;margin-top:28px;line-height:1.5;">
-            Si el botón no funciona, copiá y pegá este link en tu navegador:<br/>
-            <span style="color:#9898b8;word-break:break-all;">${actionLink}</span>
-          </p>
-          <p style="font-size:11px;color:#3a3a5a;margin-top:20px;">
-            Este link es de un solo uso y expira en 24 horas.
-          </p>
-        </div>
-      `,
-    })
+  console.log('[approve-request] generate_link status:', linkRes.status, '| keys:', Object.keys(linkData).join(','))
+
+  if (!linkRes.ok) {
+    const linkErr = (linkData?.msg ?? linkData?.error_description ?? linkData?.error ?? `Supabase ${linkRes.status}`) as string
+    console.error('[approve-request] generate_link failed:', linkErr)
+    // La solicitud fue aprobada pero no se pudo generar el link — avisar al admin
+    return NextResponse.json({ ok: true, emailSent: false, linkError: linkErr })
   }
 
-  return NextResponse.json({ ok: true, emailSent: !!actionLink, linkGenerated: !!actionLink })
+  const actionLink = linkData?.action_link as string | undefined
+  if (!actionLink) {
+    console.error('[approve-request] generate_link returned no action_link. Raw:', rawText.slice(0, 300))
+    return NextResponse.json({ ok: true, emailSent: false, linkError: 'No se generó el link' })
+  }
+
+  // 5. Enviar email al usuario con el link de acceso
+  const emailResult = await sendEmail({
+    to:      email,
+    subject: '¡Tu acceso a Declavo fue aprobado!',
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#0f1020;color:#e0e0f0;border-radius:16px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:#7c6ff7;display:inline-block;box-shadow:0 0 12px #7c6ff7;"></span>
+          <span style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">Declavo</span>
+        </div>
+        <h1 style="font-size:20px;font-weight:700;margin:0 0 10px;">¡Hola, ${name}! Tu acceso fue aprobado</h1>
+        <p style="font-size:14px;color:#9898b8;line-height:1.6;margin:0 0 24px;">
+          Tu solicitud de acceso a la plataforma Declavo fue revisada y aprobada.<br/>
+          Hacé clic en el botón de abajo para crear tu contraseña e ingresar.
+        </p>
+        <a href="${actionLink}" style="display:inline-block;padding:12px 28px;background:#7c6ff7;color:#fff;border-radius:10px;font-size:15px;font-weight:600;text-decoration:none;">
+          Crear contraseña e ingresar →
+        </a>
+        <p style="font-size:12px;color:#5a5a7a;margin-top:28px;line-height:1.5;">
+          Si el botón no funciona, copiá y pegá este link en tu navegador:<br/>
+          <span style="color:#9898b8;word-break:break-all;">${actionLink}</span>
+        </p>
+        <p style="font-size:11px;color:#3a3a5a;margin-top:20px;">
+          Este link es de un solo uso y expira en 24 horas.
+        </p>
+      </div>
+    `,
+  })
+
+  console.log('[approve-request] email result:', emailResult)
+  return NextResponse.json({ ok: true, emailSent: emailResult.ok, emailError: emailResult.error })
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
