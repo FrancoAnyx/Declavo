@@ -75,9 +75,9 @@ export async function POST(req: NextRequest) {
       apikey:          serviceKey,
     },
     body: JSON.stringify({
-      type:        'magiclink',
+      type:        'invite',
       email,
-      redirect_to: `${origin}/auth/callback?next=/catalogo`,
+      redirect_to: `${origin}/auth/callback?next=/set-password`,
     }),
   })
 
@@ -98,10 +98,10 @@ export async function POST(req: NextRequest) {
           <h1 style="font-size:20px;font-weight:700;margin:0 0 10px;">¡Hola, ${name}! Tu acceso fue aprobado</h1>
           <p style="font-size:14px;color:#9898b8;line-height:1.6;margin:0 0 24px;">
             Tu solicitud de acceso a la plataforma Declavo fue revisada y aprobada.<br/>
-            Hacé clic en el botón de abajo para ingresar directamente al catálogo.
+            Hacé clic en el botón de abajo para crear tu contraseña e ingresar.
           </p>
           <a href="${actionLink}" style="display:inline-block;padding:12px 28px;background:#7c6ff7;color:#fff;border-radius:10px;font-size:15px;font-weight:600;text-decoration:none;">
-            Ingresar a Declavo →
+            Crear contraseña e ingresar →
           </a>
           <p style="font-size:12px;color:#5a5a7a;margin-top:28px;line-height:1.5;">
             Si el botón no funciona, copiá y pegá este link en tu navegador:<br/>
