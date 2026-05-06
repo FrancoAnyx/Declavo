@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       type:        'magiclink',
       email,
-      redirect_to: `${origin}/catalogo`,
+      redirect_to: `${origin}/auth/callback?next=/catalogo`,
     }),
   })
 

@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     body: JSON.stringify({
       type: 'magiclink',
       email: request.email,
-      redirect_to: `${origin}/catalogo`,
+      redirect_to: `${origin}/auth/callback?next=/catalogo`,
     }),
   })
 
