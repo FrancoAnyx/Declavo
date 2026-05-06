@@ -13,6 +13,13 @@ function LockIcon() {
     </svg>
   )
 }
+function TrashIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+    </svg>
+  )
+}
 function ClockIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -74,6 +81,7 @@ export default function MisChatsPage() {
   const [closeReason, setCloseReason]       = useState<'no_deal' | 'agreed' | null>(null)
   const [salePrice, setSalePrice]           = useState('')
   const [closing, setClosing]               = useState(false)
+  const [deletingId, setDeletingId]         = useState<string | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -224,6 +232,20 @@ export default function MisChatsPage() {
     loadThreads()
   }
 
+  /* ── Delete thread ── */
+  async function deleteThread(productId: string) {
+    if (!confirm('¿Eliminar esta conversación? Se borran todos los mensajes.')) return
+    setDeletingId(productId)
+    await fetch('/api/chat/delete-thread', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId }),
+    })
+    if (selectedId === productId) setSelectedId(null)
+    setDeletingId(null)
+    await loadThreads()
+  }
+
   /* ── Close session ── */
   async function handleClose() {
     const currentThread = threads.find(t => t.productId === selectedId)
@@ -324,59 +346,84 @@ export default function MisChatsPage() {
             threads.map(t => {
               const needsReply = t.openSessionStatus === 'open'
               const isSelected = t.productId === selectedId
+              const isDeleting = deletingId === t.productId
               return (
-                <button
+                <div
                   key={t.productId}
-                  onClick={() => selectThread(t.productId)}
                   style={{
-                    width: '100%', textAlign: 'left',
-                    padding: '12px 14px',
+                    position: 'relative',
                     background: isSelected ? 'var(--accent-glow)' : 'transparent',
                     borderBottom: '1px solid var(--border)',
                     borderLeft: `3px solid ${isSelected ? 'var(--accent)' : 'transparent'}`,
-                    borderTop: 'none', borderRight: 'none',
-                    cursor: 'pointer', transition: 'all 0.12s',
+                    opacity: isDeleting ? 0.4 : 1,
+                    transition: 'all 0.12s',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-                    <span style={{
-                      fontSize: 12, fontWeight: 700, color: 'var(--accent)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                    }}>
-                      {t.productSku}
-                    </span>
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0, marginLeft: 8 }}>
-                      {fmtTime(t.lastMessageAt)}
-                    </span>
-                  </div>
-                  <p style={{
-                    margin: '0 0 5px', fontSize: 11, color: 'var(--text-primary)', fontWeight: 500,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {t.productDescription}
-                  </p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    {t.openSessionStatus && t.openSessionStatus !== 'open' ? (
+                  <button
+                    onClick={() => selectThread(t.productId)}
+                    style={{
+                      width: '100%', textAlign: 'left',
+                      padding: '12px 36px 12px 14px',
+                      background: 'transparent', border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                       <span style={{
-                        display: 'flex', alignItems: 'center', gap: 4,
-                        fontSize: 10, color: 'var(--text-muted)',
-                        background: 'var(--bg-base)', borderRadius: 5, padding: '2px 6px',
-                        border: '1px solid var(--border)',
+                        fontSize: 12, fontWeight: 700, color: 'var(--accent)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
                       }}>
-                        <LockIcon />
-                        {t.openSessionStatus === 'closed_agreed'
-                          ? `Acordado${t.openSessionSalePrice ? ` $${t.openSessionSalePrice.toLocaleString('es-AR')}` : ''}`
-                          : 'Sin acuerdo'}
+                        {t.productSku}
                       </span>
-                    ) : needsReply ? (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#f59e0b', fontWeight: 600 }}>
-                        <ClockIcon /> Responder
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0, marginLeft: 8 }}>
+                        {fmtTime(t.lastMessageAt)}
                       </span>
-                    ) : (
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.messageCount} mensajes</span>
-                    )}
-                  </div>
-                </button>
+                    </div>
+                    <p style={{
+                      margin: '0 0 5px', fontSize: 11, color: 'var(--text-primary)', fontWeight: 500,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {t.productDescription}
+                    </p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      {t.openSessionStatus && t.openSessionStatus !== 'open' ? (
+                        <span style={{
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          fontSize: 10, color: 'var(--text-muted)',
+                          background: 'var(--bg-base)', borderRadius: 5, padding: '2px 6px',
+                          border: '1px solid var(--border)',
+                        }}>
+                          <LockIcon />
+                          {t.openSessionStatus === 'closed_agreed'
+                            ? `Acordado${t.openSessionSalePrice ? ` $${t.openSessionSalePrice.toLocaleString('es-AR')}` : ''}`
+                            : 'Sin acuerdo'}
+                        </span>
+                      ) : needsReply ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#f59e0b', fontWeight: 600 }}>
+                          <ClockIcon /> Responder
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.messageCount} mensajes</span>
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => deleteThread(t.productId)}
+                    disabled={isDeleting}
+                    title="Eliminar conversación"
+                    style={{
+                      position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)',
+                      width: 24, height: 24, borderRadius: 6, border: 'none',
+                      background: 'transparent', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'var(--text-muted)', opacity: 0.5,
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
+                  >
+                    <TrashIcon />
+                  </button>
+                </div>
               )
             })
           )}

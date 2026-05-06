@@ -199,6 +199,10 @@ export default function ProductChat({ productId, productName, onClose }: Props) 
   async function sendMessage(text: string) {
     if (!text.trim() || !user || sending) return
 
+    // Bloquear mensaje consecutivo idéntico
+    const lastOwn = [...messages].reverse().find(m => m.is_mine)
+    if (lastOwn && lastOwn.body === text.trim()) return
+
     // Si no hay sesión abierta, crear una primero
     let sid = session?.id
     if (!sid || session?.status !== 'open') {

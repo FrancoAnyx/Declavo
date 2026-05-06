@@ -701,6 +701,9 @@ function SolicitudesSection() {
   const [invSaving, setInvSaving] = useState(false)
   const [invError, setInvError]   = useState('')
   const [approveSuccess, setApproveSuccess] = useState(false)
+  const [loginLink, setLoginLink]   = useState<string | null>(null)
+  const [linkLoading, setLinkLoading] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -738,6 +741,24 @@ function SolicitudesSection() {
     setInvForm({ org_id: '', role: 'member' })
     setInvError('')
     setApproveSuccess(false)
+    setLoginLink(null)
+    setLinkCopied(false)
+  }
+
+  async function generateLoginLink() {
+    if (!approveModal) return
+    setLinkLoading(true)
+    const res = await fetch(`/api/get-login-link?id=${approveModal.id}`)
+    const data = await res.json()
+    setLoginLink(data.url ?? null)
+    setLinkLoading(false)
+  }
+
+  function copyLoginLink() {
+    if (!loginLink) return
+    navigator.clipboard.writeText(loginLink)
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2500)
   }
 
   async function handleApprove() {
@@ -890,9 +911,44 @@ function SolicitudesSection() {
                 </div>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>¡Acceso otorgado!</p>
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
-                  Se envió un email de activación a <strong style={{ color: 'var(--text-primary)' }}>{approveModal.email}</strong>.<br />
-                  Cuando lo reciba podrá completar el registro.
+                  Usuario creado para <strong style={{ color: 'var(--text-primary)' }}>{approveModal.email}</strong>.
                 </p>
+                {/* Link de acceso para compartir manualmente */}
+                {!loginLink ? (
+                  <button
+                    onClick={generateLoginLink}
+                    disabled={linkLoading}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border-accent)',
+                      background: 'var(--accent-glow)', color: 'var(--accent)',
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    {linkLoading ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                    Generar link de acceso
+                  </button>
+                ) : (
+                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      background: 'var(--bg-base)', border: '1px solid var(--border)',
+                      borderRadius: 8, padding: '7px 10px',
+                    }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: 10, color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                        {loginLink.slice(0, 55)}…
+                      </span>
+                      <button
+                        onClick={copyLoginLink}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: linkCopied ? 'var(--success)' : 'var(--accent)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600 }}
+                      >
+                        {linkCopied ? <Check size={11} /> : <Copy size={11} />}
+                        {linkCopied ? 'Copiado' : 'Copiar'}
+                      </button>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Compartí este link con el usuario. Expira en 24 h.</p>
+                  </div>
+                )}
               </div>
             ) : (
               <div style={S.modalBody}>
@@ -1012,6 +1068,7 @@ function ChatsSection() {
   const [activeThread, setActiveThread] = useState<AdminThread | null>(null)
   const [messages, setMessages]         = useState<AdminMessage[]>([])
   const [msgLoading, setMsgLoading]     = useState(false)
+  const [deletingId, setDeletingId]     = useState<string | null>(null)
   const bottomRef                       = useRef<HTMLDivElement>(null)
 
   const loadThreads = useCallback(async () => {
@@ -1106,6 +1163,16 @@ function ChatsSection() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
+  async function deleteThread(productId: string) {
+    if (!confirm('¿Eliminar esta conversación? Se borran todos los mensajes.')) return
+    setDeletingId(productId)
+    await supabase.from('product_messages').delete().eq('product_id', productId)
+    await supabase.from('chat_sessions').delete().eq('product_id', productId)
+    if (activeThread?.productId === productId) setActiveThread(null)
+    setDeletingId(null)
+    await loadThreads()
+  }
+
   const fmtRel  = (iso: string) => {
     const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
     if (diff < 1)    return 'ahora'
@@ -1157,29 +1224,54 @@ function ChatsSection() {
               </div>
               {grpThreads.map(t => {
                 const isActive = activeThread?.productId === t.productId
+                const isDeleting = deletingId === t.productId
                 return (
-                  <button
+                  <div
                     key={t.productId}
-                    onClick={() => setActiveThread(t)}
                     style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3,
-                      padding: '10px 16px', textAlign: 'left', cursor: 'pointer', border: 'none',
-                      borderBottom: '1px solid var(--border)', transition: 'all 0.15s', width: '100%',
+                      position: 'relative',
+                      borderBottom: '1px solid var(--border)',
                       background: isActive ? 'var(--accent-glow)' : 'transparent',
                       borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
+                      opacity: isDeleting ? 0.4 : 1, transition: 'all 0.15s',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'baseline' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                        {t.productSku}
-                      </span>
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0, marginLeft: 6 }}>{fmtRel(t.lastMessageAt)}</span>
-                    </div>
-                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
-                      {t.productDescription}
-                    </p>
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.messageCount} mensajes</span>
-                  </button>
+                    <button
+                      onClick={() => setActiveThread(t)}
+                      style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3,
+                        padding: '10px 32px 10px 16px', textAlign: 'left', cursor: 'pointer',
+                        border: 'none', width: '100%', background: 'transparent',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                          {t.productSku}
+                        </span>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0, marginLeft: 6 }}>{fmtRel(t.lastMessageAt)}</span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: 11, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                        {t.productDescription}
+                      </p>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.messageCount} mensajes</span>
+                    </button>
+                    <button
+                      onClick={() => deleteThread(t.productId)}
+                      disabled={isDeleting}
+                      title="Eliminar"
+                      style={{
+                        position: 'absolute', top: '50%', right: 6, transform: 'translateY(-50%)',
+                        width: 22, height: 22, borderRadius: 5, border: 'none',
+                        background: 'transparent', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'var(--text-muted)', opacity: 0.4, fontSize: 12,
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                      onMouseLeave={e => (e.currentTarget.style.opacity = '0.4')}
+                    >
+                      🗑
+                    </button>
+                  </div>
                 )
               })}
             </div>

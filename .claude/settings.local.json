@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__12c58101-d75e-4230-b9bf-a0bd8061e18e__list_projects",
+      "mcp__12c58101-d75e-4230-b9bf-a0bd8061e18e__apply_migration",
+      "Bash(npx tsc *)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(node_modules/.bin/next build *)",
+      "Bash(cmd /c \"cd /d \\\\\"C:\\\\Users\\\\FrancoBetoldi\\\\OneDrive - Anyx S.R.L\\\\Documentos\\\\Claude\\\\Declavo\\\\nostalgic-herschel-263eb7\\\\\" && npm run build 2>&1\")",
+      "Bash(gh pr create --title 'feat: sistema de solicitudes de acceso con notificaciones en admin' --body ' *)",
+      "Bash(gh pr *)",
+      "mcp__12c58101-d75e-4230-b9bf-a0bd8061e18e__get_project_url",
+      "mcp__12c58101-d75e-4230-b9bf-a0bd8061e18e__get_publishable_keys"
+    ]
+  }
+}
