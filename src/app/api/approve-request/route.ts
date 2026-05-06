@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { sendEmail } from '@/lib/email'
 
 export async function POST(req: NextRequest) {
+  try {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -29,24 +30,34 @@ export async function POST(req: NextRequest) {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  // 1. Crear el usuario (si ya existe no falla gracias a email_confirm: true)
+  // 1. Buscar/crear usuario — robusto ante duplicados
+  let userId: string | undefined
+
+  // Intentar crear primero
   const { data: userData, error: createError } = await admin.auth.admin.createUser({
     email,
     email_confirm: true,
     user_metadata: { full_name: name },
   })
+  userId = userData?.user?.id
 
-  if (createError && !createError.message.includes('already been registered')) {
-    return NextResponse.json({ error: `No se pudo crear el usuario: ${createError.message}` }, { status: 500 })
+  // Si la creación falló o no devolvió ID, buscar usuario existente por email
+  if (!userId) {
+    console.warn('[approve-request] createUser failed or returned no user:', createError?.message)
+    // Buscar en todos los usuarios por email (búsqueda exacta case-insensitive)
+    const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+    const existing = listData?.users?.find(
+      (u: { email?: string }) => u.email?.toLowerCase() === email.toLowerCase()
+    )
+    if (existing) {
+      userId = existing.id
+      console.log('[approve-request] Found existing user:', userId)
+    }
   }
 
-  // Si el usuario ya existía, buscarlo
-  let userId = userData?.user?.id
   if (!userId) {
-    const { data: { users } } = await admin.auth.admin.listUsers()
-    const existing = users.find(u => u.email === email)
-    if (!existing) return NextResponse.json({ error: 'No se pudo encontrar ni crear el usuario' }, { status: 500 })
-    userId = existing.id
+    const errMsg = createError?.message ?? 'No se pudo crear ni encontrar el usuario'
+    return NextResponse.json({ error: errMsg }, { status: 500 })
   }
 
   // 2. Crear/actualizar perfil
@@ -115,5 +126,11 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  return NextResponse.json({ ok: true, emailSent: !!actionLink })
+  return NextResponse.json({ ok: true, emailSent: !!actionLink, linkGenerated: !!actionLink })
+
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[approve-request] Unhandled error:', msg)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }
